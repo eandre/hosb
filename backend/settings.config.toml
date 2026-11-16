@@ -1,0 +1,8 @@
+# The Clerk publishable key the frontend signs in with (pk_test_... or
+# pk_live_...), from the Clerk dashboard under API keys. It is public: it is
+# served to the browser by GET /api/config.
+clerk_publishable_key = "pk_test_cmVsYXhpbmctcGVyY2gtOTgzMy5jbGVyay5hY2NvdW50cy5kZXYk"
+
+# The origins allowed to have issued a session token (its `azp` claim), such as
+# "https://calendar.houseofsoftbeasts.se". Empty accepts any origin.
+authorized_parties = []

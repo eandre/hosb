@@ -1,0 +1,25 @@
+[project]
+name = "e2e"
+version = "0.1.0"
+description = "System tests of the House of Soft Beasts calendar, run against the whole app"
+requires-python = ">=3.14"
+dependencies = [
+    "encore-dev[httpx]",
+    "httpx>=0.28",
+    "playwright>=1.65.2",
+    "pyjwt[crypto]>=2.10",
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+]
+
+# See ../backend/pyproject.toml: a development build of Encore uses the
+# checkout's SDK.
+[tool.uv.sources]
+encore-dev = { path = "../../../encoredev/v2-encore/sdk/py/infra", editable = true }
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+line-length = 100

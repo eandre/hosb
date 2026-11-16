@@ -1,0 +1,4 @@
+# A well-formed publishable key for a Clerk instance that doesn't exist
+# (clerk.hosb.invalid): the frontend boots, and Clerk fails to load.
+clerk_publishable_key = "pk_test_Y2xlcmsuaG9zYi5pbnZhbGlkJA"
+authorized_parties = ["http://localhost:4000"]

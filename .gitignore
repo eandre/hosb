@@ -1,0 +1,5 @@
+# Encore
+/.encore
+/dist
+secrets.user.toml
+*.user.config.*

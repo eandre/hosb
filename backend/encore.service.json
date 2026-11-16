@@ -1,0 +1,8 @@
+{
+  "name": "community",
+  "lang": "python",
+  "run": { "type": "custom", "cmd": ["uv", "run", "main.py"] },
+  "api": [
+    { "type": "http", "prefix": "/", "name": "community", "expose": true }
+  ]
+}

@@ -1,0 +1,20 @@
+[project]
+name = "community"
+version = "0.1.0"
+description = "House of Soft Beasts community calendar: events and RSVPs for members"
+requires-python = ">=3.14"
+dependencies = [
+    "encore-dev",
+    "fastapi>=0.143",
+    # Verifies Clerk session tokens (RS256 JWTs) against the instance's public key.
+    "pyjwt[crypto]>=2.10",
+]
+
+# This app runs on a development build of Encore, whose SDK is not published:
+# use the checkout's. With a released Encore, drop this and pin encore-dev to
+# its version (the CLI aligns it).
+[tool.uv.sources]
+encore-dev = { path = "../../../encoredev/v2-encore/sdk/py/infra", editable = true }
+
+[tool.ruff]
+line-length = 100
