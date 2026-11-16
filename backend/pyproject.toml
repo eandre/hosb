@@ -10,6 +10,11 @@ dependencies = [
     "pyjwt[crypto]>=2.10",
 ]
 
+[tool.uv]
+# Prefer an installed Python to one uv manages: uv's managed 3.14 may be the
+# free-threaded build, which Encore's runtime isn't built for everywhere.
+python-preference = "system"
+
 # This app runs on a development build of Encore, whose SDK is not published:
 # use the checkout's. With a released Encore, drop this and pin encore-dev to
 # its version (the CLI aligns it).
