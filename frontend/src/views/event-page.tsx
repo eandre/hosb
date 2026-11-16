@@ -1,6 +1,9 @@
+"use client"
+
 import { ArrowLeft, CalendarDays, Clock, MapPin, Minus, Pencil, Plus, Trash2, Users } from "lucide-react"
 import { useState } from "react"
-import { Link, useNavigate, useParams } from "react-router"
+import Link from "next/link"
+import { useParams, useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -40,7 +43,7 @@ function initials(name: string) {
 }
 
 export function EventPage() {
-  const id = Number(useParams().id)
+  const id = Number(useParams<{ id: string }>().id)
   const { data: event, isPending, error } = useEvent(id)
   const { data: me } = useMe()
 
@@ -51,7 +54,7 @@ export function EventPage() {
           {error instanceof ApiError && error.status === 404 ? "This event doesn't exist, or was cancelled." : error.message}
         </p>
         <Button asChild variant="link" className="mt-2">
-          <Link to="/">Back to the calendar</Link>
+          <Link href="/">Back to the calendar</Link>
         </Button>
       </div>
     )
@@ -71,7 +74,7 @@ export function EventPage() {
     <article>
       <div className="mb-4 flex items-center justify-between gap-2">
         <Button asChild variant="ghost" size="sm" className="-ml-2">
-          <Link to="/">
+          <Link href="/">
             <ArrowLeft /> Calendar
           </Link>
         </Button>
@@ -261,7 +264,7 @@ function Attendees({ attendees }: { attendees: Attendee[] }) {
 function AdminActions({ event }: { event: EventDetail }) {
   const [editing, setEditing] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const navigate = useNavigate()
+  const router = useRouter()
 
   return (
     <div className="flex gap-2">
@@ -272,7 +275,7 @@ function AdminActions({ event }: { event: EventDetail }) {
         <Trash2 /> <span className="sr-only sm:not-sr-only">Delete</span>
       </Button>
       <EventFormModal open={editing} onOpenChange={setEditing} event={event} />
-      <DeleteEventDialog event={event} open={deleting} onOpenChange={setDeleting} onDeleted={() => navigate("/")} />
+      <DeleteEventDialog event={event} open={deleting} onOpenChange={setDeleting} onDeleted={() => router.push("/")} />
     </div>
   )
 }

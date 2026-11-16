@@ -1,6 +1,9 @@
+"use client"
+
 import { CalendarDays, Download, ExternalLink, MoreHorizontal, Pencil, Plus, Search, Trash2, Users } from "lucide-react"
 import { useMemo, useState, type ReactNode } from "react"
-import { Link, useNavigate } from "react-router"
+import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -63,7 +66,7 @@ function initials(name: string) {
 export function AdminPage() {
   const { data: me, isPending } = useMe()
   const [creating, setCreating] = useState(false)
-  const navigate = useNavigate()
+  const router = useRouter()
 
   if (isPending) return <Skeleton className="h-10 w-48" />
   if (!me?.admin) {
@@ -71,7 +74,7 @@ export function AdminPage() {
       <div className="py-16 text-center">
         <p className="text-muted-foreground">This page is for the house's admins.</p>
         <Button asChild variant="link" className="mt-2">
-          <Link to="/">Back to the calendar</Link>
+          <Link href="/">Back to the calendar</Link>
         </Button>
       </div>
     )
@@ -111,7 +114,7 @@ export function AdminPage() {
       <EventFormModal
         open={creating}
         onOpenChange={setCreating}
-        onSaved={(event) => navigate(`/events/${event.id}`)}
+        onSaved={(event) => router.push(`/events/${event.id}`)}
       />
     </div>
   )
@@ -199,7 +202,7 @@ function AdminEventRow({ event }: { event: CalendarEvent }) {
         <span className="font-heading text-xl leading-6 tabular-nums">{start.getDate()}</span>
       </div>
       <div className="min-w-0 flex-1">
-        <Link to={`/events/${event.id}`} className="block truncate text-base font-medium hover:underline">
+        <Link href={`/events/${event.id}`} className="block truncate text-base font-medium hover:underline">
           {event.title}
         </Link>
         <p className="text-sm text-muted-foreground tabular-nums">

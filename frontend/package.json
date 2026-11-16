@@ -1,41 +1,42 @@
 {
-  "name": "frontend",
+  "name": "web",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build && touch ../backend/static/.gitkeep",
+    "dev": "node server.mjs --dev",
+    "build": "next build && node scripts/release.mjs",
+    "start": "node server.mjs",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@encore.dev/sdk": "file:../../../encoredev/v2-encore/sdk/ts/infra",
+    "next": "^16.4.6",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
     "@clerk/react": "^6.18.8",
     "@fontsource-variable/fraunces": "^5.3.0",
     "@fontsource-variable/geist": "^5.3.0",
+    "@tailwindcss/postcss": "^4.3.5",
     "@tanstack/react-query": "^5.107.1",
+    "@types/node": "^24.19.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.5.2",
     "lucide-react": "^1.73.0",
     "next-themes": "^0.4.6",
+    "oxlint": "^1.90.0",
     "radix-ui": "^1.8.1",
-    "react": "^19.3.1",
-    "react-dom": "^19.3.1",
-    "react-router": "^8.5.1",
     "shadcn": "^4.23.0",
     "sonner": "^2.0.8",
+    "tailwindcss": "^4.3.5",
     "tw-animate-css": "^1.4.0",
+    "typescript": "^5.9.3",
     "vaul": "^1.1.2"
   },
-  "devDependencies": {
-    "@tailwindcss/vite": "^4.3.5",
-    "@types/node": "^24.19.2",
-    "@types/react": "^19.3.0",
-    "@types/react-dom": "^19.3.0",
-    "@vitejs/plugin-react": "^6.1.2",
-    "oxlint": "^1.90.0",
-    "tailwindcss": "^4.3.5",
-    "typescript": "~7.0.2",
-    "vite": "^8.3.6"
-  }
+  "//": "dependencies are what server.mjs needs at run time; Next.js bundles everything else into .next, so it is a devDependency."
 }

@@ -8,9 +8,9 @@ It is an [Encore](https://encore.dev) v2 app:
 
 | Directory  | What it is |
 |------------|------------|
-| `backend/` | The `community` service: Python, FastAPI. The JSON API under `/api`, and the built frontend at every other path. Postgres database `community`. |
-| `frontend/`| React, Tailwind CSS and shadcn/ui, built with Vite into `backend/static/`. Mobile first. |
-| `gateway/` | The `api` gateway, which exposes the service. |
+| `backend/` | The `community` service: Python, FastAPI. The JSON API under `/api`. Postgres database `community`. |
+| `frontend/`| The `web` service: Next.js, React, Tailwind CSS and shadcn/ui, mobile first. It hosts the frontend, and passes `/api` on its own origin to `community`. |
+| `gateway/` | The `api` gateway, which exposes `community`'s API. |
 | `systest/` | System tests (`e2e`): pytest against the whole running app's API. |
 
 ## Authentication
@@ -59,13 +59,23 @@ in Clerk (Restrictions → allowlist, or invitations only).
 ## Develop
 
 ```sh
-cd frontend && bun install && bun run build   # builds into backend/static
-encore run                                    # serves the app at http://api.localhost:4000
+cd frontend && bun install
+encore run   # the app at http://web.localhost:4000, the API at http://api.localhost:4000
 ```
 
-For hot reload, run `bun run dev` in `frontend/` beside `encore run`: Vite
-proxies `/api` to the gateway, at `http://localhost:4000/api` unless
-`ENCORE_GATEWAY_URL` says otherwise (when `encore run` picked another port).
+`encore run` runs `web` as Next.js's dev server, with hot reload, through
+`frontend/server.mjs`: it serves the app where Encore assigns the service, and
+passes `/api` requests on to `community` with Encore's service client, so the
+browser talks to one origin and each API call continues the page request's
+trace.
+
+Deployed, Encore builds `web` with its package's `build` script: `next build`,
+then `scripts/release.mjs` packages the build, the server and the production
+dependencies into `$ENCORE_OUTPUT_DIR`, which is all the image holds, and the
+image starts `node server.mjs`.
+
+`frontend/` likewise uses the TypeScript SDK from the Encore checkout
+(`@encore.dev/sdk` as a `file:` dependency).
 
 The backend's Python environment is managed with uv (`backend/pyproject.toml`).
 This app was made with a development build of Encore, whose Python SDK is not

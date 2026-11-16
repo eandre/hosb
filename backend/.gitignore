@@ -1,6 +1,3 @@
 __pycache__/
 *.py[cod]
 .venv/
-# The frontend's build output (see ../frontend): built, not committed.
-/static/*
-!/static/.gitkeep

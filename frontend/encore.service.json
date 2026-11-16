@@ -1,0 +1,8 @@
+{
+  "name": "web",
+  "lang": "typescript",
+  "frontend": {},
+  "run": { "type": "custom", "cmd": ["node", "server.mjs", "--dev"] },
+  "build": { "type": "script", "script": "build" },
+  "docker": { "entrypoint": ["node", "/app/server.mjs"] }
+}

@@ -1,3 +1,5 @@
+"use client"
+
 import { SignInButton } from "@clerk/react"
 import { Button } from "@/components/ui/button"
 import { Candle } from "@/components/candle"

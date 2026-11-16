@@ -9,6 +9,12 @@ lerna-debug.log*
 
 node_modules
 dist
+
+# Next.js
+.next
+.next-test
+next-env.d.ts
+*.tsbuildinfo
 dist-ssr
 *.local
 
