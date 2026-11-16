@@ -10,6 +10,9 @@ dependencies = [
     "pyjwt[crypto]>=2.10",
 ]
 
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=0.24"]
+
 [tool.uv]
 # Prefer an installed Python to one uv manages: uv's managed 3.14 may be the
 # free-threaded build, which Encore's runtime isn't built for everywhere.
@@ -23,3 +26,9 @@ encore-dev = { path = "../../../encoredev/v2-encore/sdk/py/infra", editable = tr
 
 [tool.ruff]
 line-length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
