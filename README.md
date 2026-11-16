@@ -11,7 +11,7 @@ It is an [Encore](https://encore.dev) v2 app:
 | `backend/` | The `community` service: Python, FastAPI. The JSON API under `/api`, and the built frontend at every other path. Postgres database `community`. |
 | `frontend/`| React, Tailwind CSS and shadcn/ui, built with Vite into `backend/static/`. Mobile first. |
 | `gateway/` | The `api` gateway, which exposes the service. |
-| `systest/` | System tests (`e2e`): pytest against the whole running app, with a Playwright test in Encore's browser. |
+| `systest/` | System tests (`e2e`): pytest against the whole running app's API. |
 
 ## Authentication
 
@@ -95,12 +95,10 @@ fill; an RSVP that would overfill it is refused (409). Interactive docs are at
 ## Test
 
 ```sh
-cd frontend && bun run build   # the system tests check that the app is served
 encore test
 ```
 
 The system tests can't sign in through Clerk, so they sign Clerk-shaped
 session tokens with `systest/clerk_test_key.pem`, a key made for the tests
 only, whose public half `secrets.test.toml` gives the backend as
-`ClerkJWTKey` under test. The browser test checks that the built app boots
-and, as Clerk can't be reached there, shows why sign-in is unavailable.
+`ClerkJWTKey` under test.

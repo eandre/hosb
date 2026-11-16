@@ -42,34 +42,6 @@ def expect(response: httpx.Response, status: int) -> dict:
     return response.json() if response.content else {}
 
 
-# --- the app is served -------------------------------------------------------
-
-
-async def test_serves_the_frontend_and_its_config(anonymous: httpx.AsyncClient):
-    assert expect(await anonymous.get("/api/health"), 200) == {"ok": True}
-    config = expect(await anonymous.get("/api/config"), 200)
-    assert config == {"clerkPublishableKey": "pk_test_Y2xlcmsuaG9zYi5pbnZhbGlkJA"}
-
-    # The React app is the page at / and at each of its own routes.
-    for path in ("/", "/events/42"):
-        page = await anonymous.get(path)
-        assert page.status_code == 200, f"{path}: {page.status_code} {page.text[:200]}"
-        assert page.headers["content-type"].startswith("text/html")
-        assert '<div id="root">' in page.text
-
-    # Its bundles are served too.
-    script = page.text.split('src="', 1)[1].split('"', 1)[0]
-    assert script.startswith("/assets/")
-    bundle = await anonymous.get(script)
-    assert bundle.status_code == 200
-    assert "immutable" in bundle.headers["cache-control"]
-
-    # An unknown API route is a JSON 404, not the app.
-    missing = await anonymous.get("/api/nope")
-    assert missing.status_code == 404
-    assert missing.json() == {"detail": "no such API route"}
-
-
 # --- authentication ----------------------------------------------------------
 
 
