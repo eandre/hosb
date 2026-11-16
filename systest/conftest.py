@@ -8,6 +8,7 @@ key's public half, which secrets.test.toml gives it as the ClerkJWTKey secret.
 
 from __future__ import annotations
 
+import os
 import time
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
@@ -23,6 +24,18 @@ from encore.testing import system
 TEST_KEY = (Path(__file__).parent / "clerk_test_key.pem").read_text()
 
 community = postgres.Database.named("community")
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Skip every test in CI: they need the whole app running, with Encore.
+    CI counts as set unless it is empty, "0" or "false"."""
+    if os.environ.get("CI", "").strip().lower() in ("", "0", "false"):
+        return
+    skip = pytest.mark.skip(reason="system tests don't run in CI (CI is set)")
+    for item in items:
+        item.add_marker(skip)
+
+
 # The origin settings.test.config.toml allows tokens to be issued for.
 ORIGIN = "http://localhost:4000"
 
