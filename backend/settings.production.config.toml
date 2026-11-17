@@ -6,4 +6,4 @@ clerk_publishable_key = "pk_live_Y2xlcmsuaG91c2VvZnNvZnRiZWFzdHMuc2Uk"
 
 # The production app's origin: a session token issued for any other site
 # (its azp claim) is refused.
-authorized_parties = ["https://calendar.hosb.se"]
+authorized_parties = ["https://hosb.se"]
