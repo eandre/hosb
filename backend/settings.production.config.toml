@@ -3,3 +3,7 @@
 # houseofsoftbeasts.se or a subdomain of it. Its JWT public key is the
 # ClerkJWTKey secret's value for production environments.
 clerk_publishable_key = "pk_live_Y2xlcmsuaG91c2VvZnNvZnRiZWFzdHMuc2Uk"
+
+# The production app's origin: a session token issued for any other site
+# (its azp claim) is refused.
+authorized_parties = ["https://calendar.hosb.se"]
