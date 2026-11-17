@@ -1,5 +1,9 @@
 /** @type {import("next").NextConfig} */
 const config = {
+  // A release of only the files Next.js's server loads, traced from this
+  // app (scripts/release.mjs packages it with server.mjs).
+  output: "standalone",
+  outputFileTracingRoot: import.meta.dirname,
   // Where the build goes: server.mjs points a test session's dev server
   // elsewhere, as it runs as long as `encore run`'s, beside it.
   distDir: process.env.WEB_NEXT_DIST_DIR || ".next",

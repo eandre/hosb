@@ -70,9 +70,11 @@ browser talks to one origin and each API call continues the page request's
 trace.
 
 Deployed, Encore builds `web` with its package's `build` script: `next build`,
-then `scripts/release.mjs` packages the build, the server and the production
-dependencies into `$ENCORE_OUTPUT_DIR`, which is all the image holds, and the
-image starts `node server.mjs`.
+then `scripts/release.mjs` packages Next.js's standalone output (only the files
+its server loads), its static files, `server.mjs` and the packages
+`server.mjs` loads itself (Encore's SDK) into `$ENCORE_OUTPUT_DIR`, which is all
+the image holds, about 50 MB. The image starts `node server.mjs`, which serves
+the build in production mode.
 
 `frontend/` likewise uses the TypeScript SDK from the Encore checkout
 (`@encore.dev/sdk` as a `file:` dependency).

@@ -4,20 +4,32 @@
 // continue its trace.
 //
 //   node server.mjs --dev   the dev server, with hot reload (`encore run`)
-//   node server.mjs         the built app (`bun run build` first)
+//   node server.mjs         the built app: a release scripts/release.mjs packaged
 //
 // Encore's SDK is used here, outside Next.js's bundles, which it loads its
 // native runtime around.
 
+import { readFileSync } from "node:fs"
 import { createServer } from "node:http"
+import { join } from "node:path"
 import { Readable } from "node:stream"
 import { appMeta } from "@encore.dev/sdk"
 import { client } from "@encore.dev/sdk/services"
 import { onShutdown } from "@encore.dev/sdk/shutdown"
 import { instrumentHTTP } from "@encore.dev/sdk/tracing/node"
-import next from "next"
 
 const dev = process.argv.includes("--dev")
+if (!dev) {
+  // The built app runs in production mode, which Next.js and React choose
+  // their builds by: set before Next.js is loaded, below.
+  process.env.NODE_ENV = "production"
+  // The release is Next.js's standalone output (scripts/release.mjs), which
+  // holds the build's resolved config and not what loading next.config
+  // takes: hand Next.js the config, as its standalone server does.
+  const required = join(import.meta.dirname, ".next", "required-server-files.json")
+  const { config } = JSON.parse(readFileSync(required, "utf8"))
+  process.env.__NEXT_PRIVATE_STANDALONE_CONFIG = JSON.stringify(config)
+}
 const community = client("community")
 
 // A test session's dev server builds apart from `encore run`'s, which Next.js
@@ -80,6 +92,7 @@ async function proxyAPI(req, res) {
 const { hostname, port } = parseAddr(
   process.env.ENCORE_LISTEN_ADDR ?? `127.0.0.1:${process.env.PORT ?? 3000}`,
 )
+const { default: next } = await import("next")
 const app = next({ dev, dir: import.meta.dirname, hostname, port })
 const handle = app.getRequestHandler()
 await app.prepare()
