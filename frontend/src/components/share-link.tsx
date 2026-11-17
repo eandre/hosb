@@ -86,7 +86,15 @@ export function ShareButton({ event, admin }: { event: CalendarEvent; admin: boo
   return (
     <>
       <Button variant="outline" size="sm" onClick={start}>
-        <Link2 /> Share
+        {admin ? (
+          <>
+            <Link2 /> Share
+          </>
+        ) : (
+          <>
+            <UserPlus /> Invite a friend
+          </>
+        )}
       </Button>
       <ResponsiveModal
         open={open}
