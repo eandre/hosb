@@ -1,8 +1,8 @@
 # Production-type environments sign in with the production Clerk instance,
-# whose Frontend API is clerk.houseofsoftbeasts.se: it serves only an app on
-# houseofsoftbeasts.se or a subdomain of it. Its JWT public key is the
-# ClerkJWTKey secret's value for production environments.
-clerk_publishable_key = "pk_live_Y2xlcmsuaG91c2VvZnNvZnRiZWFzdHMuc2Uk"
+# whose Frontend API is clerk.hosb.se: it serves only an app on hosb.se or a
+# subdomain of it. Its JWT public key is the ClerkJWTKey secret's value for
+# production environments.
+clerk_publishable_key = "pk_live_Y2xlcmsuaG9zYi5zZSQ"
 
 # The production app's origin: a session token issued for any other site
 # (its azp claim) is refused.
