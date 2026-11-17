@@ -18,8 +18,8 @@ from typing import Any
 import httpx
 import jwt
 import pytest
+from encore.services import httpx as services
 from encore.storage import postgres
-from encore.testing import system
 
 TEST_KEY = (Path(__file__).parent / "clerk_test_key.pem").read_text()
 
@@ -88,28 +88,24 @@ async def empty_calendar() -> None:
 
 
 @pytest.fixture
-def gateway_url() -> str:
-    return system.url("api")
-
-
-@pytest.fixture
-async def anonymous(gateway_url: str) -> AsyncIterator[httpx.AsyncClient]:
-    """A client with no session token."""
-    async with httpx.AsyncClient(
-        base_url=gateway_url, headers=system.headers(), timeout=60
-    ) as client:
+async def anonymous() -> AsyncIterator[httpx.AsyncClient]:
+    """A client of the community service with no session token. The gateway
+    doesn't route to it (the web service passes /api on to it), so the tests
+    call it directly, as a service client carrying the test."""
+    async with services.client("community", timeout=60) as client:
         yield client
 
 
 @pytest.fixture
-async def sign_in(gateway_url: str) -> AsyncIterator[Callable[..., Member]]:
+async def sign_in() -> AsyncIterator[Callable[..., Member]]:
     """Signs a member in: sign_in("user_ada", "Ada", admin=True)."""
     clients: list[httpx.AsyncClient] = []
 
     def sign_in(user_id: str, name: str, *, admin: bool = False) -> Member:
         token = session_token(user_id, name=name, email=f"{user_id}@example.test", admin=admin)
-        headers = {**system.headers(), "Authorization": f"Bearer {token}"}
-        client = httpx.AsyncClient(base_url=gateway_url, headers=headers, timeout=60)
+        client = services.client(
+            "community", headers={"Authorization": f"Bearer {token}"}, timeout=60
+        )
         clients.append(client)
         return Member(id=user_id, name=name, admin=admin, client=client)
 

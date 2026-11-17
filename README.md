@@ -8,9 +8,9 @@ It is an [Encore](https://encore.dev) v2 app:
 
 | Directory  | What it is |
 |------------|------------|
-| `backend/` | The `community` service: Python, FastAPI. The JSON API under `/api`. Postgres database `community`. |
+| `backend/` | The `community` service: Python, FastAPI. The JSON API under `/api`, which the gateway doesn't route to: `web` passes it on. Postgres database `community`. |
 | `frontend/`| The `web` service: Next.js, React, Tailwind CSS and shadcn/ui, mobile first. It hosts the frontend, and passes `/api` on its own origin to `community`. |
-| `gateway/` | The `api` gateway, which exposes `community`'s API. |
+| `gateway/` | The `api` gateway, the app's one public address. It routes every path to `web`. |
 | `systest/` | System tests (`e2e`): pytest against the whole running app's API. |
 
 ## Authentication
@@ -60,7 +60,7 @@ in Clerk (Restrictions → allowlist, or invitations only).
 
 ```sh
 cd frontend && bun install
-encore run   # the app at http://web.localhost:4000, the API at http://api.localhost:4000
+encore run   # the app, and its API at /api, at http://api.localhost:4000
 ```
 
 `encore run` runs `web` as Next.js's dev server, with hot reload, through

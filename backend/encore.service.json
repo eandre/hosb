@@ -3,6 +3,6 @@
   "lang": "python",
   "run": { "type": "custom", "cmd": ["uv", "run", "main.py"] },
   "api": [
-    { "type": "http", "prefix": "/api", "name": "community", "expose": true }
+    { "type": "http", "prefix": "/api", "name": "community", "expose": false }
   ]
 }
