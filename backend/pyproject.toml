@@ -8,6 +8,8 @@ dependencies = [
     "fastapi>=0.143",
     # Verifies Clerk session tokens (RS256 JWTs) against the instance's public key.
     "pyjwt[crypto]>=2.10",
+    # Time zone data, for events' dates in Stockholm: slim images have none.
+    "tzdata>=2025.2",
 ]
 
 [dependency-groups]

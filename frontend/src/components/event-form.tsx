@@ -15,6 +15,7 @@ interface Fields {
   end: string
   location: string
   capacity: string
+  shareSignupCap: string
   description: string
 }
 
@@ -27,6 +28,7 @@ function initial(event?: CalendarEvent, date?: Date): Fields {
       end: "22:00",
       location: "",
       capacity: "",
+      shareSignupCap: "",
       description: "",
     }
   }
@@ -38,6 +40,7 @@ function initial(event?: CalendarEvent, date?: Date): Fields {
     end: event.endsAt ? fromInstant(event.endsAt).time : "",
     location: event.location,
     capacity: event.capacity?.toString() ?? "",
+    shareSignupCap: event.shareSignupCap?.toString() ?? "",
     description: event.description,
   }
 }
@@ -118,6 +121,7 @@ function EventForm({
           startsAt,
           endsAt,
           capacity: fields.capacity ? Number(fields.capacity) : null,
+          shareSignupCap: fields.shareSignupCap ? Number(fields.shareSignupCap) : null,
         },
       },
       {
@@ -180,6 +184,24 @@ function EventForm({
           value={fields.description}
           onChange={set("description")}
           placeholder="What will happen, what to bring…"
+        />
+      </div>
+      <div className="grid grid-cols-[1fr_7rem] items-end gap-4">
+        <div>
+          <Label htmlFor="shareSignupCap">Guests per member link</Label>
+          <p className="mt-1 text-xs text-muted-foreground">
+            How many guests can sign up through each member&apos;s shareable link.
+          </p>
+        </div>
+        <Input
+          id="shareSignupCap"
+          type="number"
+          inputMode="numeric"
+          min={1}
+          max={10000}
+          value={fields.shareSignupCap}
+          onChange={set("shareSignupCap")}
+          placeholder="No limit"
         />
       </div>
       {error && <p className="text-sm text-destructive" role="alert">{error}</p>}

@@ -80,7 +80,7 @@ export function EventsPage() {
             open={creating}
             onOpenChange={setCreating}
             date={day}
-            onSaved={(event) => router.push(`/events/${event.id}`)}
+            onSaved={(event) => router.push(`/events/${event.slug}`)}
           />
         </>
       )}

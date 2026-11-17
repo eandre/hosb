@@ -6,13 +6,14 @@ needs an admin.
 GET    /api/me                      the signed-in member
 GET    /api/events                  upcoming events (?scope=past, or ?from=&to=)
 POST   /api/events                  create an event (admin)
-GET    /api/events/{id}             an event and who is coming
+GET    /api/events/{ref}            an event and who is coming, by its slug (or one it
+                                    had) or its id
 PUT    /api/events/{id}             change an event (admin)
 DELETE /api/events/{id}             delete an event (admin)
 PUT    /api/events/{id}/rsvp        RSVP {"status": "going"|"maybe"|"not_going", "guests": 0-4}
 DELETE /api/events/{id}/rsvp        withdraw one's RSVP
 
-The admin page's own routes are in admin.py.
+The admin page's own routes are in admin.py, and shareable links' in share.py.
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ from pydantic.alias_generators import to_camel
 
 from auth import User, current_admin, current_user
 from db import db
+from slugs import assign_slug
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +63,8 @@ class EventIn(Model):
     starts_at: AwareDatetime
     ends_at: AwareDatetime | None = None
     capacity: int | None = Field(default=None, ge=1, le=10000)
+    # How many guests a member's shareable link may sign up; None for no limit.
+    share_signup_cap: int | None = Field(default=None, ge=1, le=10000)
 
     @model_validator(mode="after")
     def _check(self) -> EventIn:
@@ -81,18 +85,22 @@ class MyRSVP(Model):
 
 class Event(Model):
     id: int
+    slug: str
     title: str
     description: str
     location: str
     starts_at: datetime
     ends_at: datetime | None
     capacity: int | None
+    share_signup_cap: int | None
     # None for an event imported from the old calendar.
     created_by: str | None
     created_at: datetime
     updated_at: datetime
-    # People coming: members going plus their guests.
+    # People coming: members going, their guests, and guests who signed up
+    # through a shareable link (guest_count of them).
     going_count: int
+    guest_count: int
     maybe_count: int
     my_rsvp: MyRSVP | None
 
@@ -106,8 +114,17 @@ class Attendee(Model):
     updated_at: datetime
 
 
+class GuestSignup(Model):
+    """A guest who signed up through a shareable link, as members see them."""
+
+    name: str
+    invited_by: str
+    created_at: datetime
+
+
 class EventDetail(Event):
     attendees: list[Attendee]
+    guest_signups: list[GuestSignup]
 
 
 class EventList(Model):
@@ -171,9 +188,11 @@ Admin = Annotated[User, Depends(admin)]
 # The events with their RSVP counts and the member's ($1) own RSVP. A WHERE
 # clause goes in {where}, made only of fixed fragments with parameters.
 EVENTS_QUERY = """
-SELECT e.id, e.title, e.description, e.location, e.starts_at, e.ends_at,
-       e.capacity, e.created_by, e.created_at, e.updated_at,
-       COALESCE(SUM(1 + r.guests) FILTER (WHERE r.status = 'going'), 0)::int AS going_count,
+SELECT e.id, e.slug, e.title, e.description, e.location, e.starts_at, e.ends_at,
+       e.capacity, e.share_signup_cap, e.created_by, e.created_at, e.updated_at,
+       (COALESCE(SUM(1 + r.guests) FILTER (WHERE r.status = 'going'), 0)
+        + (SELECT count(*) FROM guest_signups g WHERE g.event_id = e.id))::int AS going_count,
+       (SELECT count(*) FROM guest_signups g WHERE g.event_id = e.id)::int AS guest_count,
        COUNT(r.user_id) FILTER (WHERE r.status = 'maybe')::int AS maybe_count,
        mine.status AS my_status, mine.guests AS my_guests
 FROM events e
@@ -191,16 +210,19 @@ def to_event(row: dict[str, Any]) -> Event:
         mine = MyRSVP(status=row["my_status"], guests=row["my_guests"])
     return Event(
         id=row["id"],
+        slug=row["slug"],
         title=row["title"],
         description=row["description"],
         location=row["location"],
         starts_at=row["starts_at"],
         ends_at=row["ends_at"],
         capacity=row["capacity"],
+        share_signup_cap=row["share_signup_cap"],
         created_by=row["created_by"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
         going_count=row["going_count"],
+        guest_count=row["guest_count"],
         maybe_count=row["maybe_count"],
         my_rsvp=mine,
     )
@@ -222,10 +244,32 @@ async def load_event(event_id: int, user_id: str) -> EventDetail:
         """,
         event_id,
     ).all()
+    guests = await db.query(
+        """
+        SELECT g.name, COALESCE(m.name, '') AS invited_by, g.created_at
+        FROM guest_signups g
+        LEFT JOIN share_links l ON l.id = g.link_id
+        LEFT JOIN members m ON m.id = l.created_by
+        WHERE g.event_id = $1
+        ORDER BY g.created_at
+        """,
+        event_id,
+    ).all()
     return EventDetail(
         **to_event(row).model_dump(),
         attendees=[Attendee(**a) for a in attendees],
+        guest_signups=[GuestSignup(**g) for g in guests],
     )
+
+
+async def resolve_event(ref: str) -> int:
+    """The id of the event ref names: a slug it has or had, or its id."""
+    if ref.isdigit():
+        return int(ref)
+    row = await db.query("SELECT event_id FROM event_slugs WHERE slug = $1", ref).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="no such event")
+    return row["event_id"]
 
 
 @router.get("/me")
@@ -265,48 +309,57 @@ async def list_events(
 
 @router.post("/events", status_code=201)
 async def create_event(event: EventIn, user: Admin) -> EventDetail:
-    row = await db.query(
-        """
-        INSERT INTO events (title, description, location, starts_at, ends_at, capacity, created_by)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING id
-        """,
-        event.title,
-        event.description,
-        event.location,
-        event.starts_at,
-        event.ends_at,
-        event.capacity,
-        user.id,
-    ).one()
+    async with db.begin() as tx:
+        # A placeholder slug, until the event has the id its slug is checked by.
+        row = await tx.query(
+            """
+            INSERT INTO events (title, description, location, starts_at, ends_at, capacity,
+                                share_signup_cap, created_by, slug)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'new-' || gen_random_uuid())
+            RETURNING id
+            """,
+            event.title,
+            event.description,
+            event.location,
+            event.starts_at,
+            event.ends_at,
+            event.capacity,
+            event.share_signup_cap,
+            user.id,
+        ).one()
+        await assign_slug(tx, row["id"], event.title, event.starts_at)
     logger.info("created event", extra={"event_id": row["id"], "by": user.id})
     return await load_event(row["id"], user.id)
 
 
-@router.get("/events/{event_id}")
-async def get_event(event_id: int, user: AnyMember) -> EventDetail:
-    return await load_event(event_id, user.id)
+@router.get("/events/{ref}")
+async def get_event(ref: str, user: AnyMember) -> EventDetail:
+    return await load_event(await resolve_event(ref), user.id)
 
 
 @router.put("/events/{event_id}")
 async def update_event(event_id: int, event: EventIn, user: Admin) -> EventDetail:
-    result = await db.exec(
-        """
-        UPDATE events
-        SET title = $2, description = $3, location = $4, starts_at = $5,
-            ends_at = $6, capacity = $7, updated_at = now()
-        WHERE id = $1
-        """,
-        event_id,
-        event.title,
-        event.description,
-        event.location,
-        event.starts_at,
-        event.ends_at,
-        event.capacity,
-    )
-    if result.rows_affected == 0:
-        raise HTTPException(status_code=404, detail="no such event")
+    async with db.begin() as tx:
+        result = await tx.exec(
+            """
+            UPDATE events
+            SET title = $2, description = $3, location = $4, starts_at = $5,
+                ends_at = $6, capacity = $7, share_signup_cap = $8, updated_at = now()
+            WHERE id = $1
+            """,
+            event_id,
+            event.title,
+            event.description,
+            event.location,
+            event.starts_at,
+            event.ends_at,
+            event.capacity,
+            event.share_signup_cap,
+        )
+        if result.rows_affected == 0:
+            raise HTTPException(status_code=404, detail="no such event")
+        # A new title or date makes a new slug; the old one still leads here.
+        await assign_slug(tx, event_id, event.title, event.starts_at)
     logger.info("updated event", extra={"event_id": event_id, "by": user.id})
     return await load_event(event_id, user.id)
 
@@ -337,8 +390,11 @@ async def rsvp(event_id: int, body: RSVPIn, user: Member) -> EventDetail:
         if body.status == "going" and event["capacity"] is not None:
             taken = await tx.query(
                 """
-                SELECT COALESCE(SUM(1 + guests), 0)::int AS n FROM rsvps
-                WHERE event_id = $1 AND status = 'going' AND user_id <> $2
+                SELECT (
+                    (SELECT COALESCE(SUM(1 + guests), 0) FROM rsvps
+                     WHERE event_id = $1 AND status = 'going' AND user_id <> $2)
+                    + (SELECT count(*) FROM guest_signups WHERE event_id = $1)
+                )::int AS n
                 """,
                 event_id,
                 user.id,

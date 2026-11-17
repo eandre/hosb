@@ -93,15 +93,31 @@ that and depend on `encore-dev` from PyPI.
 | `GET /api/config` | anyone | the Clerk publishable key |
 | `GET /api/me` | member | the member, and whether they are an admin |
 | `GET /api/events` | member | upcoming events; `?scope=past`, or `?from=&to=` (ISO 8601) for a range |
-| `GET /api/events/{id}` | member | an event, with who's coming |
+| `GET /api/events/{ref}` | member | an event, with who's coming, by its slug (or one it had) or id |
 | `POST /api/events` | admin | create an event |
 | `PUT /api/events/{id}` | admin | change an event |
 | `DELETE /api/events/{id}` | admin | delete an event and its RSVPs |
 | `PUT /api/events/{id}/rsvp` | member | `{"status": "going" \| "maybe" \| "not_going", "guests": 0-4}` |
 | `DELETE /api/events/{id}/rsvp` | member | withdraw one's RSVP |
+| `POST /api/events/{id}/share-links` | member | the member's one shareable link to the event; an admin's new one, `{"name": "...", "signupCap": 10}` |
+| `GET /api/events/{id}/share-links` | admin | the event's links, with views and sign-ups |
+| `GET /api/admin/share-links` | admin | every link, with views and sign-ups |
+| `GET /api/share/{token}` | anyone | the link's event, as a guest sees it |
+| `POST /api/share/{token}/views` | anyone | a visit, `{"visitorId": "..."}` |
+| `POST /api/share/{token}/signups` | anyone | sign up as a guest, `{"name": "...", "email": "..."}` |
 
-An event can have a number of places, which members going and their guests
-fill; an RSVP that would overfill it is refused (409). Interactive docs are at
+An event can have a number of places, which members going, their guests, and
+guests signed up through shareable links fill; an RSVP or sign-up that would
+overfill it is refused (409).
+
+Each event has a slug, its date in Stockholm and its title
+(`2026-11-26-the-house-dinner-thanksgiving`), and its page is
+`/events/<slug>`. A shareable link, `/s/<token>`, shows its one event to anyone
+who has it, without signing in, and lets them sign up as a guest with their
+name and email address. A member has one link per event; its sign-ups are
+capped by the event's "guests per member link". An admin makes named links,
+each with a cap of its own, and sees each one's views (by visitor) and
+sign-ups. Interactive docs are at
 `/api/docs`.
 
 ## Test

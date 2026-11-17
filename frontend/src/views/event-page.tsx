@@ -1,7 +1,7 @@
 "use client"
 
 import { ArrowLeft, CalendarDays, Clock, MapPin, Minus, Pencil, Plus, Trash2, Users } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 import { toast } from "sonner"
@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { DeleteEventDialog } from "@/components/delete-event-dialog"
 import { EventFormModal } from "@/components/event-form"
+import { ShareButton, ShareLinksPanel } from "@/components/share-link"
 import { placesLeft, statusLabel } from "@/lib/events"
 import {
   ApiError,
@@ -21,6 +22,7 @@ import {
   useRsvp,
   type Attendee,
   type EventDetail,
+  type GuestSignup,
   type RSVPStatus,
 } from "@/lib/api"
 import { formatLongDate, formatTimeRange } from "@/lib/dates"
@@ -43,9 +45,15 @@ function initials(name: string) {
 }
 
 export function EventPage() {
-  const id = Number(useParams<{ id: string }>().id)
-  const { data: event, isPending, error } = useEvent(id)
+  const ref = useParams<{ slug: string }>().slug
+  const { data: event, isPending, error } = useEvent(ref)
   const { data: me } = useMe()
+  const router = useRouter()
+
+  // Reached by an id, or a slug the event had: show its own address.
+  useEffect(() => {
+    if (event && event.slug !== ref) router.replace(`/events/${event.slug}`)
+  }, [event, ref, router])
 
   if (error) {
     return (
@@ -78,7 +86,10 @@ export function EventPage() {
             <ArrowLeft /> Calendar
           </Link>
         </Button>
-        {me?.admin && <AdminActions event={event} />}
+        <div className="flex gap-2">
+          {!over && <ShareButton event={event} admin={me?.admin ?? false} />}
+          {me?.admin && <AdminActions event={event} />}
+        </div>
       </div>
 
       <div className="grid gap-8 md:grid-cols-[minmax(0,1fr)_20rem] md:items-start">
@@ -107,6 +118,7 @@ export function EventPage() {
               <dt className="sr-only">Attendance</dt>
               <dd>
                 {event.goingCount} going
+                {event.guestCount > 0 && ` (${event.guestCount} via shared links)`}
                 {event.maybeCount > 0 && `, ${event.maybeCount} maybe`}
                 {event.capacity !== null && ` · ${event.capacity} places, ${placesLeft(event)} left`}
               </dd>
@@ -130,6 +142,8 @@ export function EventPage() {
             <RsvpCard event={event} />
           )}
           <Attendees attendees={event.attendees} />
+          <Guests guests={event.guestSignups} />
+          {me?.admin && <ShareLinksPanel event={event} />}
         </aside>
       </div>
     </article>
@@ -261,6 +275,30 @@ function Attendees({ attendees }: { attendees: Attendee[] }) {
   )
 }
 
+function Guests({ guests }: { guests: GuestSignup[] }) {
+  if (guests.length === 0) return null
+  return (
+    <section>
+      <h3 className="mb-2 text-sm font-sans font-medium text-muted-foreground">
+        Guests via shared links · {guests.length}
+      </h3>
+      <ul className="space-y-2">
+        {guests.map((g, i) => (
+          <li key={`${g.name}-${i}`} className="flex items-center gap-3">
+            <Avatar className="size-8">
+              <AvatarFallback className="text-xs">{initials(g.name)}</AvatarFallback>
+            </Avatar>
+            <span className="min-w-0 flex-1 truncate text-sm">{g.name}</span>
+            {g.invitedBy && (
+              <span className="truncate text-xs text-muted-foreground">via {g.invitedBy.split(" ")[0]}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
 function AdminActions({ event }: { event: EventDetail }) {
   const [editing, setEditing] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -274,7 +312,13 @@ function AdminActions({ event }: { event: EventDetail }) {
       <Button variant="ghost" size="sm" className="text-destructive" onClick={() => setDeleting(true)}>
         <Trash2 /> <span className="sr-only sm:not-sr-only">Delete</span>
       </Button>
-      <EventFormModal open={editing} onOpenChange={setEditing} event={event} />
+      <EventFormModal
+        open={editing}
+        onOpenChange={setEditing}
+        event={event}
+        // A new title or date is a new slug, and with it a new address.
+        onSaved={(saved) => router.replace(`/events/${saved.slug}`)}
+      />
       <DeleteEventDialog event={event} open={deleting} onOpenChange={setDeleting} onDeleted={() => router.push("/")} />
     </div>
   )

@@ -17,6 +17,7 @@ from pydantic.alias_generators import to_camel
 
 import admin
 import events
+import share
 from settings import settings
 
 logging.basicConfig(level=logging.INFO, handlers=[StructuredLogHandler()])
@@ -46,6 +47,7 @@ async def public_config() -> PublicConfig:
 
 app.include_router(events.router)
 app.include_router(admin.router)
+app.include_router(share.router)
 
 
 @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])

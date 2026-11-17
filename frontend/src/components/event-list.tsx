@@ -22,7 +22,7 @@ export function EventRow({ event, past }: { event: CalendarEvent; past?: boolean
   const left = placesLeft(event)
   return (
     <Link
-      href={`/events/${event.id}`}
+      href={`/events/${event.slug}`}
       className={cn(
         "group flex items-center gap-4 rounded-xl border border-border/70 bg-card/70 p-4 transition-colors",
         "hover:border-candle/40 hover:bg-accent/60 focus-visible:outline-2 focus-visible:outline-ring",

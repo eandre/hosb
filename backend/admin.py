@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import csv
 import io
-import re
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Response
@@ -63,9 +62,12 @@ async def stats(_: Admin) -> Stats:
             (SELECT count(*) FROM members
                 WHERE last_seen_at >= now() - interval '30 days')::int AS active_members,
             (SELECT count(*) FROM events e WHERE {NOT_OVER})::int AS upcoming_events,
-            (SELECT COALESCE(SUM(1 + r.guests), 0) FROM rsvps r
+            ((SELECT COALESCE(SUM(1 + r.guests), 0) FROM rsvps r
                 JOIN events e ON e.id = r.event_id
-                WHERE r.status = 'going' AND {NOT_OVER})::int AS upcoming_going
+                WHERE r.status = 'going' AND {NOT_OVER})
+             + (SELECT count(*) FROM guest_signups g
+                JOIN events e ON e.id = g.event_id
+                WHERE {NOT_OVER}))::int AS upcoming_going
         """
         )
         .one()
@@ -107,9 +109,7 @@ def cell(value: str) -> str:
 
 @router.get("/events/{event_id}/attendees.csv")
 async def attendees_csv(event_id: int, _: Admin) -> Response:
-    event = (
-        await db.read().query("SELECT title, starts_at FROM events WHERE id = $1", event_id).first()
-    )
+    event = await db.read().query("SELECT slug FROM events WHERE id = $1", event_id).first()
     if event is None:
         raise HTTPException(status_code=404, detail="no such event")
     rows = (
@@ -120,6 +120,18 @@ async def attendees_csv(event_id: int, _: Admin) -> Response:
         FROM rsvps r JOIN members m ON m.id = r.user_id
         WHERE r.event_id = $1
         ORDER BY CASE r.status WHEN 'going' THEN 0 WHEN 'maybe' THEN 1 ELSE 2 END, m.name
+        """,
+            event_id,
+        )
+        .all()
+    )
+    guests = (
+        await db.read()
+        .query(
+            """
+        SELECT name, email, created_at FROM guest_signups
+        WHERE event_id = $1
+        ORDER BY name
         """,
             event_id,
         )
@@ -139,9 +151,19 @@ async def attendees_csv(event_id: int, _: Admin) -> Response:
                 r["updated_at"].isoformat(timespec="minutes"),
             ]
         )
+    # Guests who signed up through a shareable link.
+    for g in guests:
+        writer.writerow(
+            [
+                cell(g["name"]),
+                cell(g["email"]),
+                "Guest sign-up",
+                0,
+                g["created_at"].isoformat(timespec="minutes"),
+            ]
+        )
 
-    slug = re.sub(r"[^a-z0-9]+", "-", event["title"].lower()).strip("-")[:40] or "event"
-    filename = f"{event['starts_at']:%Y-%m-%d}-{slug}.csv"
+    filename = f"{event['slug']}.csv"
     return Response(
         content=out.getvalue(),
         media_type="text/csv; charset=utf-8",

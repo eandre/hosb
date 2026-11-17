@@ -16,17 +16,24 @@ export interface Me {
 
 export interface CalendarEvent {
   id: number
+  /** Its date and title, unique: the page is /events/<slug>. */
+  slug: string
   title: string
   description: string
   location: string
   startsAt: string
   endsAt: string | null
   capacity: number | null
+  /** How many guests a member's shareable link may sign up; null: no limit. */
+  shareSignupCap: number | null
   /** null for an event imported from the old calendar. */
   createdBy: string | null
   createdAt: string
   updatedAt: string
+  /** Members going, their guests, and guests signed up through links. */
   goingCount: number
+  /** Of goingCount: guests signed up through a shareable link. */
+  guestCount: number
   maybeCount: number
   myRsvp: { status: RSVPStatus; guests: number } | null
 }
@@ -40,8 +47,57 @@ export interface Attendee {
   updatedAt: string
 }
 
+export interface GuestSignup {
+  name: string
+  /** The member whose link they signed up through. */
+  invitedBy: string
+  createdAt: string
+}
+
 export interface EventDetail extends CalendarEvent {
   attendees: Attendee[]
+  guestSignups: GuestSignup[]
+}
+
+export interface ShareLink {
+  id: number
+  token: string
+  /** Where it leads, on this origin: /s/<event slug>-<token>. */
+  path: string
+  kind: "member" | "admin"
+  name: string
+  eventId: number
+  eventSlug: string
+  eventTitle: string
+  eventStartsAt: string
+  createdBy: string
+  createdByName: string
+  createdAt: string
+  /** How many guests may sign up through it; null: no limit. */
+  signupCap: number | null
+  /** People who opened it, and how often they did in all. */
+  views: number
+  totalViews: number
+  signups: number
+}
+
+/** A shared event, as a guest with the link sees it. */
+export interface Shared {
+  /** The link's path, with the event's slug as it is now. */
+  path: string
+  event: {
+    slug: string
+    title: string
+    description: string
+    location: string
+    startsAt: string
+    endsAt: string | null
+    placesLeft: number | null
+    isOver: boolean
+  }
+  invitedBy: string
+  signupsOpen: boolean
+  closedReason: string | null
 }
 
 export interface EventInput {
@@ -51,6 +107,7 @@ export interface EventInput {
   startsAt: string
   endsAt: string | null
   capacity: number | null
+  shareSignupCap: number | null
 }
 
 export interface AdminStats {
@@ -120,7 +177,11 @@ export const keys = {
   events: ["events"] as const,
   list: (scope: string) => ["events", "list", scope] as const,
   range: (from: string, to: string) => ["events", "range", from, to] as const,
-  event: (id: number) => ["events", "detail", id] as const,
+  /** An event's detail, by the slug (or id) its page is addressed by. */
+  event: (ref: string | number) => ["events", "detail", String(ref)] as const,
+  eventLinks: (id: number) => ["events", "links", id] as const,
+  adminLinks: ["admin", "links"] as const,
+  shared: (token: string) => ["shared", token] as const,
   admin: ["admin"] as const,
   adminStats: ["admin", "stats"] as const,
   adminMembers: ["admin", "members"] as const,
@@ -153,16 +214,23 @@ export function useEventsBetween(from: Date, to: Date) {
   })
 }
 
-export function useEvent(id: number) {
+/** An event by its slug, one it had, or its id. */
+export function useEvent(ref: string) {
   const api = useApi()
-  return useQuery({ queryKey: keys.event(id), queryFn: () => api<EventDetail>(`/api/events/${id}`) })
+  return useQuery({
+    queryKey: keys.event(ref),
+    queryFn: () => api<EventDetail>(`/api/events/${encodeURIComponent(ref)}`),
+  })
 }
 
 /** After a change to an event: the new detail, and every list refetched. */
 function useEventChanged() {
   const client = useQueryClient()
   return (event?: EventDetail) => {
-    if (event) client.setQueryData(keys.event(event.id), event)
+    if (event) {
+      client.setQueryData(keys.event(event.slug), event)
+      client.setQueryData(keys.event(event.id), event)
+    }
     return Promise.all([
       client.invalidateQueries({ queryKey: keys.events, refetchType: "active" }),
       client.invalidateQueries({ queryKey: keys.admin }),
@@ -245,4 +313,95 @@ export function useDownloadAttendees() {
     },
     [getToken],
   )
+}
+
+// --- shareable links ---------------------------------------------------------
+
+/** A link's full address, to copy or share. */
+export const shareUrl = (link: ShareLink) => `${window.location.origin}${link.path}`
+
+/** A member's one link to the event: the same each time it is asked for. */
+export function useMyShareLink(eventId: number) {
+  const api = useApi()
+  return useMutation({
+    mutationFn: () => api<ShareLink>(`/api/events/${eventId}/share-links`, { method: "POST" }),
+  })
+}
+
+/** An admin's new link to the event, named and capped. */
+export function useCreateShareLink(eventId: number) {
+  const api = useApi()
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { name: string; signupCap: number | null }) =>
+      api<ShareLink>(`/api/events/${eventId}/share-links`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () =>
+      Promise.all([
+        client.invalidateQueries({ queryKey: keys.eventLinks(eventId) }),
+        client.invalidateQueries({ queryKey: keys.adminLinks }),
+      ]),
+  })
+}
+
+/** The event's links and their numbers: for admins. */
+export function useEventShareLinks(eventId: number, enabled: boolean) {
+  const api = useApi()
+  return useQuery({
+    queryKey: keys.eventLinks(eventId),
+    queryFn: () =>
+      api<{ links: ShareLink[] }>(`/api/events/${eventId}/share-links`).then((r) => r.links),
+    enabled,
+  })
+}
+
+/** Every link and its numbers: for admins. */
+export function useAllShareLinks() {
+  const api = useApi()
+  return useQuery({
+    queryKey: keys.adminLinks,
+    queryFn: () => api<{ links: ShareLink[] }>("/api/admin/share-links").then((r) => r.links),
+  })
+}
+
+// What a guest with a link does: no member, no token.
+
+export function useShared(token: string) {
+  return useQuery({
+    queryKey: keys.shared(token),
+    queryFn: () => request<Shared>(`/api/share/${encodeURIComponent(token)}`),
+    retry: (count, err) => !(err instanceof ApiError && err.status < 500) && count < 2,
+  })
+}
+
+/** An id for this browser, kept, so that a link's views count people. */
+function visitorId(): string {
+  const key = "hosb-visitor"
+  let id = localStorage.getItem(key)
+  if (!id) {
+    id = crypto.randomUUID()
+    localStorage.setItem(key, id)
+  }
+  return id
+}
+
+export function recordShareView(token: string): Promise<void> {
+  return request<void>(`/api/share/${encodeURIComponent(token)}/views`, {
+    method: "POST",
+    body: JSON.stringify({ visitorId: visitorId() }),
+  })
+}
+
+export function useGuestSignup(token: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { name: string; email: string }) =>
+      request<{ status: "signed_up" | "already_signed_up"; name: string }>(
+        `/api/share/${encodeURIComponent(token)}/signups`,
+        { method: "POST", body: JSON.stringify(input) },
+      ),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.shared(token) }),
+  })
 }

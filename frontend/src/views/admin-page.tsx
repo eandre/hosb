@@ -1,6 +1,17 @@
 "use client"
 
-import { CalendarDays, Download, ExternalLink, MoreHorizontal, Pencil, Plus, Search, Trash2, Users } from "lucide-react"
+import {
+  CalendarDays,
+  Download,
+  ExternalLink,
+  Link2,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+  Users,
+} from "lucide-react"
 import { useMemo, useState, type ReactNode } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -21,9 +32,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { DeleteEventDialog } from "@/components/delete-event-dialog"
 import { EventFormModal } from "@/components/event-form"
+import { LinkRow } from "@/components/share-link"
 import {
   useAdminMembers,
   useAdminStats,
+  useAllShareLinks,
   useDownloadAttendees,
   useEvents,
   useMe,
@@ -102,6 +115,9 @@ export function AdminPage() {
           <TabsTrigger value="members" className="flex-1 sm:flex-none">
             <Users /> Members
           </TabsTrigger>
+          <TabsTrigger value="links" className="flex-1 sm:flex-none">
+            <Link2 /> Links
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="events">
           <EventsTab />
@@ -109,12 +125,15 @@ export function AdminPage() {
         <TabsContent value="members">
           <MembersTab />
         </TabsContent>
+        <TabsContent value="links">
+          <LinksTab />
+        </TabsContent>
       </Tabs>
 
       <EventFormModal
         open={creating}
         onOpenChange={setCreating}
-        onSaved={(event) => router.push(`/events/${event.id}`)}
+        onSaved={(event) => router.push(`/events/${event.slug}`)}
       />
     </div>
   )
@@ -202,7 +221,7 @@ function AdminEventRow({ event }: { event: CalendarEvent }) {
         <span className="font-heading text-xl leading-6 tabular-nums">{start.getDate()}</span>
       </div>
       <div className="min-w-0 flex-1">
-        <Link href={`/events/${event.id}`} className="block truncate text-base font-medium hover:underline">
+        <Link href={`/events/${event.slug}`} className="block truncate text-base font-medium hover:underline">
           {event.title}
         </Link>
         <p className="text-sm text-muted-foreground tabular-nums">
@@ -357,5 +376,49 @@ function MemberRow({ member: m }: { member: AdminMember }) {
         {m.upcomingGoing} <span className="text-muted-foreground">/ {m.pastGoing}</span>
       </span>
     </li>
+  )
+}
+
+/** Every shareable link, the latest events' first, with its views and
+ * sign-ups. */
+function LinksTab() {
+  const { data: links, isPending, error } = useAllShareLinks()
+  const totals = useMemo(
+    () =>
+      (links ?? []).reduce(
+        (t, l) => ({ views: t.views + l.views, signups: t.signups + l.signups }),
+        { views: 0, signups: 0 },
+      ),
+    [links],
+  )
+  if (error) return <p className="text-sm text-destructive">{error.message}</p>
+  if (isPending) {
+    return (
+      <div className="space-y-2">
+        {[0, 1, 2].map((i) => (
+          <Skeleton key={i} className="h-16 w-full rounded-xl" />
+        ))}
+      </div>
+    )
+  }
+  if (links.length === 0) {
+    return (
+      <p className="py-12 text-center text-muted-foreground">
+        No shareable links yet. Share, on an event&apos;s page, makes one.
+      </p>
+    )
+  }
+  return (
+    <div>
+      <p className="mb-3 text-sm text-muted-foreground">
+        {links.length} {links.length === 1 ? "link" : "links"} · {totals.views} people viewed them ·{" "}
+        {totals.signups} guests signed up
+      </p>
+      <ul className="divide-y divide-border/70 rounded-xl border border-border/70 bg-card/70 px-4">
+        {links.map((link) => (
+          <LinkRow key={link.id} link={link} showEvent />
+        ))}
+      </ul>
+    </div>
   )
 }
