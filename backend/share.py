@@ -6,10 +6,12 @@ It shows them nothing else: every other route needs a signed-in member.
 
 A member has one link to each event: asking for one again gives the same
 link. Its sign-ups are capped by the event's share_signup_cap. An admin makes
-as many links as they like, each with a name and a cap of its own.
+as many links as they like, each with a name and a cap of its own, and
+optionally in someone else's name: whose invitation it is to its guests.
 
 POST /api/events/{id}/share-links     a member's link; an admin's new link
-                                      {"name": "...", "signupCap": 10 | null}
+                                      {"name": "...", "signupCap": 10 | null,
+                                       "invitedBy": "..." | null}
 GET  /api/events/{id}/share-links     the event's links, with their numbers (admin)
 GET  /api/admin/share-links           every link, with their numbers (admin)
 
@@ -55,6 +57,16 @@ class ShareLinkIn(Model):
 
     name: str = Field(default="", max_length=100)
     signup_cap: int | None = Field(default=None, ge=1, le=10000)
+    # Whose invitation it is, as its guests read it: someone the admin makes
+    # it for. None or blank for the admin's own.
+    invited_by: str | None = Field(default=None, max_length=100)
+
+    @field_validator("invited_by")
+    @classmethod
+    def _invited_by(cls, invited_by: str | None) -> str | None:
+        if invited_by is None:
+            return None
+        return " ".join(invited_by.split()) or None
 
 
 class ShareLink(Model):
@@ -70,6 +82,8 @@ class ShareLink(Model):
     event_starts_at: datetime
     created_by: str
     created_by_name: str
+    # Whose invitation an admin's link is to its guests, if not its creator's.
+    invited_by: str | None
     created_at: datetime
     # How many guests may sign up through it: None for no limit.
     signup_cap: int | None
@@ -84,7 +98,7 @@ class ShareLinkList(Model):
 
 
 LINKS_QUERY = """
-SELECT l.id, l.token, l.kind, l.name, l.created_at, l.created_by,
+SELECT l.id, l.token, l.kind, l.name, l.invited_by, l.created_at, l.created_by,
        m.name AS created_by_name,
        e.id AS event_id, e.slug AS event_slug, e.title AS event_title,
        e.starts_at AS event_starts_at,
@@ -140,8 +154,9 @@ async def create_link(
             raise HTTPException(status_code=422, detail="an admin's link needs a name")
         row = await db.query(
             """
-            INSERT INTO share_links (token, event_id, created_by, kind, name, signup_cap)
-            VALUES ($1, $2, $3, 'admin', $4, $5)
+            INSERT INTO share_links
+                (token, event_id, created_by, kind, name, signup_cap, invited_by)
+            VALUES ($1, $2, $3, 'admin', $4, $5, $6)
             RETURNING id
             """,
             new_token(),
@@ -149,6 +164,7 @@ async def create_link(
             user.id,
             name,
             body.signup_cap,
+            body.invited_by,
         ).one()
         response.status_code = 201
         logger.info("created share link", extra={"link_id": row["id"], "by": user.id})
@@ -215,7 +231,8 @@ class Shared(Model):
     event: SharedEvent
     # The link's path, with the event's slug as it is now.
     path: str
-    # The first name of the member who shared it.
+    # Whose invitation it is: the first name of the member who shared it, or
+    # whom an admin made it for.
     invited_by: str
     # Whether a guest can sign up through the link now, and if not, why not.
     signups_open: bool
@@ -262,7 +279,7 @@ class ViewIn(Model):
 # The link's event with what a guest sign-up depends on, the link's by $1.
 SHARED_QUERY = f"""
 SELECT l.id AS link_id, l.kind, l.signup_cap AS link_cap,
-       split_part(m.name, ' ', 1) AS invited_by,
+       COALESCE(l.invited_by, split_part(m.name, ' ', 1)) AS invited_by,
        e.id AS event_id, e.slug, e.title, e.description, e.location, e.starts_at, e.ends_at,
        e.capacity, e.share_signup_cap,
        COALESCE(e.ends_at, e.starts_at + {DEFAULT_DURATION_SQL}) < now() AS is_over,

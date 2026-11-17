@@ -72,6 +72,8 @@ export interface ShareLink {
   eventStartsAt: string
   createdBy: string
   createdByName: string
+  /** Whose invitation an admin's link is to its guests, if not its creator's. */
+  invitedBy: string | null
   createdAt: string
   /** How many guests may sign up through it; null: no limit. */
   signupCap: number | null
@@ -328,12 +330,13 @@ export function useMyShareLink(eventId: number) {
   })
 }
 
-/** An admin's new link to the event, named and capped. */
+/** An admin's new link to the event, named and capped, and maybe in someone
+ * else's name. */
 export function useCreateShareLink(eventId: number) {
   const api = useApi()
   const client = useQueryClient()
   return useMutation({
-    mutationFn: (input: { name: string; signupCap: number | null }) =>
+    mutationFn: (input: { name: string; signupCap: number | null; invitedBy: string | null }) =>
       api<ShareLink>(`/api/events/${eventId}/share-links`, {
         method: "POST",
         body: JSON.stringify(input),

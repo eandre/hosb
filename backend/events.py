@@ -118,6 +118,8 @@ class GuestSignup(Model):
     """A guest who signed up through a shareable link, as members see them."""
 
     name: str
+    # Whose invitation they came by: the link's creator, or whom an admin
+    # made it for.
     invited_by: str
     created_at: datetime
 
@@ -246,7 +248,7 @@ async def load_event(event_id: int, user_id: str) -> EventDetail:
     ).all()
     guests = await db.query(
         """
-        SELECT g.name, COALESCE(m.name, '') AS invited_by, g.created_at
+        SELECT g.name, COALESCE(l.invited_by, m.name, '') AS invited_by, g.created_at
         FROM guest_signups g
         LEFT JOIN share_links l ON l.id = g.link_id
         LEFT JOIN members m ON m.id = l.created_by

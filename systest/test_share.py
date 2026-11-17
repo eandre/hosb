@@ -133,6 +133,44 @@ async def test_an_admin_makes_named_links_with_caps(admin: Member, ada: Member):
     assert {link["token"] for link in everything} == {link["token"] for link in links}
 
 
+async def test_an_admins_link_can_invite_in_someone_elses_name(
+    admin: Member, ada: Member, anonymous: httpx.AsyncClient
+):
+    event = await create_event(admin)
+    path = f"/api/events/{event['id']}/share-links"
+    too_long = {"name": "DJ", "invitedBy": "x" * 101}
+    assert (await admin.client.post(path, json=too_long)).status_code == 422
+
+    own = expect(await admin.client.post(path, json={"name": "Flyer", "invitedBy": "  "}), 201)
+    for_lisa = expect(
+        await admin.client.post(path, json={"name": "DJ", "invitedBy": " Lisa  Svensson "}), 201
+    )
+    assert own["invitedBy"] is None
+    assert for_lisa["invitedBy"] == "Lisa Svensson"
+    # A member's link is always in their own name: there is nothing to set.
+    assert (await member_link(ada, event))["invitedBy"] is None
+
+    # Guests read whose invitation it is: the admin's first name, or Lisa's.
+    shared = expect(await anonymous.get(f"/api/share/{own['token']}"), 200)
+    assert shared["invitedBy"] == "Erin"
+    shared = expect(await anonymous.get(f"/api/share/{for_lisa['token']}"), 200)
+    assert shared["invitedBy"] == "Lisa Svensson"
+
+    # Members see that Lisa's guest came by her.
+    guest = {"name": "Linus Gast", "email": "linus@example.test"}
+    expect(await anonymous.post(f"/api/share/{for_lisa['token']}/signups", json=guest), 201)
+    detail = expect(await ada.client.get(f"/api/events/{event['slug']}"), 200)
+    assert [(g["name"], g["invitedBy"]) for g in detail["guestSignups"]] == [
+        ("Linus Gast", "Lisa Svensson")
+    ]
+    links = expect(await admin.client.get(path), 200)["links"]
+    assert [(link["name"], link["invitedBy"]) for link in links] == [
+        ("Flyer", None),
+        ("DJ", "Lisa Svensson"),
+        ("", None),
+    ]
+
+
 async def test_a_link_is_the_events_slug_and_an_unguessable_token(
     admin: Member, ada: Member, anonymous: httpx.AsyncClient
 ):

@@ -99,7 +99,7 @@ that and depend on `encore-dev` from PyPI.
 | `DELETE /api/events/{id}` | admin | delete an event and its RSVPs |
 | `PUT /api/events/{id}/rsvp` | member | `{"status": "going" \| "maybe" \| "not_going", "guests": 0-4}` |
 | `DELETE /api/events/{id}/rsvp` | member | withdraw one's RSVP |
-| `POST /api/events/{id}/share-links` | member | the member's one shareable link to the event; an admin's new one, `{"name": "...", "signupCap": 10}` |
+| `POST /api/events/{id}/share-links` | member | the member's one shareable link to the event; an admin's new one, `{"name": "...", "signupCap": 10, "invitedBy": "Lisa"}` |
 | `GET /api/events/{id}/share-links` | admin | the event's links, with views and sign-ups |
 | `GET /api/admin/share-links` | admin | every link, with views and sign-ups |
 | `GET /api/share/{token}` | anyone | the link's event, as a guest sees it |
@@ -112,12 +112,14 @@ overfill it is refused (409).
 
 Each event has a slug, its date in Stockholm and its title
 (`2026-11-26-the-house-dinner-thanksgiving`), and its page is
-`/events/<slug>`. A shareable link, `/s/<token>`, shows its one event to anyone
+`/events/<slug>`. A shareable link, `/s/<slug>-<token>`, shows its one event to anyone
 who has it, without signing in, and lets them sign up as a guest with their
 name and email address. A member has one link per event; its sign-ups are
 capped by the event's "guests per member link". An admin makes named links,
 each with a cap of its own, and sees each one's views (by visitor) and
-sign-ups. Interactive docs are at
+sign-ups. Guests read who invited them: the first name of whoever made the
+link, or, for an admin's link made for someone else, the name the admin gave
+as "Invited by". Interactive docs are at
 `/api/docs`.
 
 ## Test

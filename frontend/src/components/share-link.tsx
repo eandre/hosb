@@ -13,6 +13,7 @@ import {
   shareUrl,
   useCreateShareLink,
   useEventShareLinks,
+  useMe,
   useMyShareLink,
   type CalendarEvent,
   type ShareLink,
@@ -93,7 +94,7 @@ export function ShareButton({ event, admin }: { event: CalendarEvent; admin: boo
         title={admin ? "New shareable link" : "Share this event"}
         description={
           admin
-            ? "Name the link to tell it apart in the numbers, and say how many guests can sign up through it."
+            ? "Name the link to tell it apart in the numbers, say how many guests can sign up through it, and whose invitation it is."
             : "Anyone with this link can see this event, and sign up as your guest."
         }
       >
@@ -113,7 +114,9 @@ export function ShareButton({ event, admin }: { event: CalendarEvent; admin: boo
 
 function NewLinkForm({ event, onDone }: { event: CalendarEvent; onDone: () => void }) {
   const create = useCreateShareLink(event.id)
+  const firstName = useMe().data?.name.split(" ")[0] ?? ""
   const [name, setName] = useState("")
+  const [invitedBy, setInvitedBy] = useState("")
   const [cap, setCap] = useState(event.shareSignupCap?.toString() ?? "")
   const [error, setError] = useState<string | null>(null)
 
@@ -121,7 +124,7 @@ function NewLinkForm({ event, onDone }: { event: CalendarEvent; onDone: () => vo
     e.preventDefault()
     setError(null)
     create.mutate(
-      { name, signupCap: cap ? Number(cap) : null },
+      { name, signupCap: cap ? Number(cap) : null, invitedBy: invitedBy.trim() || null },
       { onError: (err) => setError(err.message) },
     )
   }
@@ -163,6 +166,21 @@ function NewLinkForm({ event, onDone }: { event: CalendarEvent; onDone: () => vo
           placeholder="No limit"
         />
       </div>
+      <div className="grid gap-2">
+        <Label htmlFor="link-invited-by">Invited by</Label>
+        <Input
+          id="link-invited-by"
+          maxLength={100}
+          value={invitedBy}
+          onChange={(e) => setInvitedBy(e.target.value)}
+          placeholder={firstName || "You"}
+          aria-describedby="link-invited-by-hint"
+        />
+        <p id="link-invited-by-hint" className="text-xs text-muted-foreground">
+          Making it for someone? Guests will read &ldquo;{invitedBy.trim() || firstName || "You"} invited you
+          to&hellip;&rdquo;
+        </p>
+      </div>
       {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <Button type="button" variant="ghost" onClick={onDone}>
@@ -189,6 +207,7 @@ export function LinkRow({ link, showEvent }: { link: ShareLink; showEvent?: bool
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">
           {link.kind === "admin" ? link.name : `${link.createdByName || "A member"}'s link`}
+          {link.invitedBy && <span className="font-normal text-muted-foreground"> · for {link.invitedBy}</span>}
         </p>
         <p className="mb-1 truncate text-xs text-muted-foreground">
           {showEvent ? (
