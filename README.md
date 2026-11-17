@@ -56,6 +56,49 @@ To set up a Clerk instance for it:
 Anyone who can sign in to the Clerk instance is a member, so restrict sign-ups
 in Clerk (Restrictions → allowlist, or invitations only).
 
+## Google Calendar
+
+On the settings page (`/settings`), a member can connect their Google account
+and have the house's events kept in one of its calendars, or in a new one the
+app makes: the events they're going to or might go to, or all of them. Changes
+to events and RSVPs reach their calendar within seconds, through the
+`calendar-changes` Pub/Sub topic, and an hourly cron job catches up on any
+that failed. Disconnecting takes the events out again. How it works is in
+`backend/google_calendar.py`.
+
+To set it up for an environment:
+
+1. In a [Google Cloud project](https://console.cloud.google.com), **enable the
+   Google Calendar API**, and set up the **OAuth consent screen** with the
+   scopes `openid`, `email`, `calendar.calendarlist.readonly`,
+   `calendar.events` and `calendar.app.created`. Publish the app: while it is
+   in testing, only listed test users can connect, and Google drops their
+   connection after a week.
+
+2. **Create an OAuth client** (Credentials → Create credentials → OAuth client
+   ID, type "Web application"), with an authorized redirect URI of
+   `<origin>/api/google/callback` for each origin the app is served from, such
+   as `https://www.hosb.se/api/google/callback` and
+   `https://hosb.se/api/google/callback`.
+
+3. **Give the app the client**: its id as `google_client_id` in
+   `backend/settings.config.toml` (or an environment's overlay), and its secret
+   as the `GoogleClientSecret` secret:
+
+   ```sh
+   encore secret set community.GoogleClientSecret
+   ```
+
+4. **Set the `GoogleTokenKey` secret**, which encrypts members' Google tokens in
+   the database: any long random string. Changing it later disconnects
+   everyone.
+
+   ```sh
+   openssl rand -base64 32 | encore secret set community.GoogleTokenKey
+   ```
+
+Until `google_client_id` is set, the settings page says the sync isn't set up.
+
 ## Develop
 
 ```sh
@@ -105,6 +148,13 @@ that and depend on `encore-dev` from PyPI.
 | `GET /api/share/{token}` | anyone | the link's event, as a guest sees it |
 | `POST /api/share/{token}/views` | anyone | a visit, `{"visitorId": "..."}` |
 | `POST /api/share/{token}/signups` | anyone | sign up as a guest, `{"name": "...", "email": "..."}` |
+| `GET /api/google` | member | the member's Google Calendar connection |
+| `POST /api/google/connect` | member | start connecting, `{"origin": "https://..."}`: Google's sign-in URL |
+| `GET /api/google/callback` | anyone | where Google sends the member back; its state says whose it is |
+| `GET /api/google/calendars` | member | the calendars the member can add events to |
+| `PUT /api/google/settings` | member | `{"mode": "rsvp" \| "all", "calendarId": "..."}` or `{"mode": ..., "newCalendar": true}`, then a sync |
+| `POST /api/google/sync` | member | sync the member's calendar now |
+| `DELETE /api/google` | member | disconnect, taking the events out of the calendar |
 
 An event can have a number of places, which members going, their guests, and
 guests signed up through shareable links fill; an RSVP or sign-up that would
@@ -132,3 +182,8 @@ The system tests can't sign in through Clerk, so they sign Clerk-shaped
 session tokens with `systest/clerk_test_key.pem`, a key made for the tests
 only, whose public half `secrets.test.toml` gives the backend as
 `ClerkJWTKey` under test.
+
+Nor can they reach Google: `systest/fake_google.py` stands in for its OAuth
+and Calendar APIs, on the port `backend/settings.test.config.toml` points the
+backend at, with the test-only `GoogleClientSecret` and `GoogleTokenKey` from
+`secrets.test.toml`.

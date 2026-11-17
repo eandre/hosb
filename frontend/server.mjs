@@ -89,6 +89,18 @@ async function proxyAPI(req, res) {
   }
 }
 
+/** Whether the request is for the community service's /api/internal routes,
+ * however its path is written: the service decodes it before routing. */
+function isInternal(url) {
+  let path
+  try {
+    path = decodeURIComponent(new URL(`http://web${url}`).pathname)
+  } catch {
+    return true
+  }
+  return /^\/+api\/+internal(\/|$)/.test(path)
+}
+
 const { hostname, port } = parseAddr(
   process.env.ENCORE_LISTEN_ADDR ?? `127.0.0.1:${process.env.PORT ?? 3000}`,
 )
@@ -99,6 +111,13 @@ await app.prepare()
 
 const server = createServer(
   instrumentHTTP((req, res) => {
+    // The community service's internal routes, such as its cron jobs', are
+    // Encore's to call, not the world's.
+    if (isInternal(req.url ?? "/")) {
+      res.writeHead(404, { "content-type": "application/json" })
+      res.end(JSON.stringify({ detail: "no such API route" }))
+      return
+    }
     if (req.url === "/api" || req.url?.startsWith("/api/") || req.url?.startsWith("/api?")) {
       return proxyAPI(req, res)
     }

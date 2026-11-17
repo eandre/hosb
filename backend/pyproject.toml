@@ -10,6 +10,10 @@ dependencies = [
     "pyjwt[crypto]>=2.10",
     # Time zone data, for events' dates in Stockholm: slim images have none.
     "tzdata>=2025.2",
+    # Calls Google's OAuth and Calendar APIs.
+    "httpx>=0.28",
+    # Encrypts members' Google tokens in the database (Fernet).
+    "cryptography>=44",
 ]
 
 [dependency-groups]

@@ -131,6 +131,34 @@ export interface AdminMember {
   pastGoing: number
 }
 
+/** The member's Google Calendar sync (backend/google_calendar.py). */
+export interface GoogleStatus {
+  /** Whether the environment has Google Calendar sync set up. */
+  enabled: boolean
+  connected: boolean
+  googleEmail: string
+  /** Where the events go: null until the member picks a calendar. */
+  calendarId: string | null
+  calendarName: string
+  /** "rsvp": what they're going or might go to; "all": every event. */
+  mode: "rsvp" | "all"
+  /** Google stopped accepting the connection: connect again. */
+  needsReconnect: boolean
+  lastError: string
+  lastSyncedAt: string | null
+  syncedEvents: number
+}
+
+export interface GoogleCalendar {
+  id: string
+  name: string
+  primary: boolean
+}
+
+export type GoogleSettings =
+  | { mode: GoogleStatus["mode"]; calendarId: string }
+  | { mode: GoogleStatus["mode"]; newCalendar: true }
+
 export const MAX_GUESTS = 4
 
 export class ApiError extends Error {
@@ -187,6 +215,8 @@ export const keys = {
   admin: ["admin"] as const,
   adminStats: ["admin", "stats"] as const,
   adminMembers: ["admin", "members"] as const,
+  google: ["google"] as const,
+  googleCalendars: ["google", "calendars"] as const,
 }
 
 export function useMe() {
@@ -407,4 +437,62 @@ export function useGuestSignup(token: string) {
       ),
     onSuccess: () => client.invalidateQueries({ queryKey: keys.shared(token) }),
   })
+}
+
+export function useGoogleStatus() {
+  const api = useApi()
+  return useQuery({ queryKey: keys.google, queryFn: () => api<GoogleStatus>("/api/google") })
+}
+
+/** The calendars the member can add events to, once they're connected. */
+export function useGoogleCalendars(enabled: boolean) {
+  const api = useApi()
+  return useQuery({
+    queryKey: keys.googleCalendars,
+    queryFn: () => api<{ calendars: GoogleCalendar[] }>("/api/google/calendars").then((r) => r.calendars),
+    enabled,
+  })
+}
+
+/** Starts connecting: off to Google's sign-in, which sends the member back
+ * to /settings. */
+export function useConnectGoogle() {
+  const api = useApi()
+  return useMutation({
+    mutationFn: () =>
+      api<{ url: string }>("/api/google/connect", {
+        method: "POST",
+        body: JSON.stringify({ origin: window.location.origin }),
+      }),
+    onSuccess: ({ url }) => window.location.assign(url),
+  })
+}
+
+function useGoogleMutation<I>(mutationFn: (input: I) => Promise<GoogleStatus | undefined>) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn,
+    onSuccess: (status) => {
+      if (status) client.setQueryData(keys.google, status)
+      return client.invalidateQueries({ queryKey: keys.google })
+    },
+  })
+}
+
+/** Which calendar, and which events: then a sync. */
+export function useSaveGoogleSettings() {
+  const api = useApi()
+  return useGoogleMutation((input: GoogleSettings) =>
+    api<GoogleStatus>("/api/google/settings", { method: "PUT", body: JSON.stringify(input) }),
+  )
+}
+
+export function useSyncGoogle() {
+  const api = useApi()
+  return useGoogleMutation(() => api<GoogleStatus>("/api/google/sync", { method: "POST" }))
+}
+
+export function useDisconnectGoogle() {
+  const api = useApi()
+  return useGoogleMutation(() => api<undefined>("/api/google", { method: "DELETE" }))
 }

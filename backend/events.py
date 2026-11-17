@@ -14,6 +14,8 @@ PUT    /api/events/{id}/rsvp        RSVP {"status": "going"|"maybe"|"not_going",
 DELETE /api/events/{id}/rsvp        withdraw one's RSVP
 
 The admin page's own routes are in admin.py, and shareable links' in share.py.
+Changes to events and RSVPs are published for members' Google calendars to
+follow (google_calendar.py).
 """
 
 from __future__ import annotations
@@ -27,6 +29,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 from pydantic.alias_generators import to_camel
 
 from auth import User, current_admin, current_user
+from calendar_changes import notify
 from db import db
 from slugs import assign_slug
 
@@ -331,6 +334,7 @@ async def create_event(event: EventIn, user: Admin) -> EventDetail:
         ).one()
         await assign_slug(tx, row["id"], event.title, event.starts_at)
     logger.info("created event", extra={"event_id": row["id"], "by": user.id})
+    await notify(event_id=row["id"])
     return await load_event(row["id"], user.id)
 
 
@@ -363,6 +367,7 @@ async def update_event(event_id: int, event: EventIn, user: Admin) -> EventDetai
         # A new title or date makes a new slug; the old one still leads here.
         await assign_slug(tx, event_id, event.title, event.starts_at)
     logger.info("updated event", extra={"event_id": event_id, "by": user.id})
+    await notify(event_id=event_id)
     return await load_event(event_id, user.id)
 
 
@@ -372,6 +377,7 @@ async def delete_event(event_id: int, user: Admin) -> Response:
     if result.rows_affected == 0:
         raise HTTPException(status_code=404, detail="no such event")
     logger.info("deleted event", extra={"event_id": event_id, "by": user.id})
+    await notify(event_id=event_id)
     return Response(status_code=204)
 
 
@@ -419,10 +425,12 @@ async def rsvp(event_id: int, body: RSVPIn, user: Member) -> EventDetail:
             body.status,
             guests,
         )
+    await notify(user_id=user.id, event_id=event_id)
     return await load_event(event_id, user.id)
 
 
 @router.delete("/events/{event_id}/rsvp")
 async def withdraw_rsvp(event_id: int, user: AnyMember) -> EventDetail:
     await db.exec("DELETE FROM rsvps WHERE event_id = $1 AND user_id = $2", event_id, user.id)
+    await notify(user_id=user.id, event_id=event_id)
     return await load_event(event_id, user.id)

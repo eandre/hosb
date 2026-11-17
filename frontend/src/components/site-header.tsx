@@ -1,29 +1,38 @@
 "use client"
 
 import { Show, UserButton } from "@clerk/react"
-import { Shield } from "lucide-react"
+import { Settings, Shield, type LucideIcon } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Candle } from "@/components/candle"
 import { useMe } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
-function AdminLink() {
-  const { data: me } = useMe()
-  const active = usePathname() === "/admin"
-  if (!me?.admin) return null
+/** A page in the header: an icon, and its name where there's room. */
+function NavLink({ href, icon: Icon, children }: { href: string; icon: LucideIcon; children: string }) {
+  const active = usePathname() === href
   return (
     <Link
-      href="/admin"
+      href={href}
       aria-current={active ? "page" : undefined}
       className={cn(
         "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm transition-colors",
         active ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:text-foreground",
       )}
     >
-      <Shield className="size-4" />
-      <span className="sr-only sm:not-sr-only">Admin</span>
+      <Icon className="size-4" />
+      <span className="sr-only sm:not-sr-only">{children}</span>
     </Link>
+  )
+}
+
+function AdminLink() {
+  const { data: me } = useMe()
+  if (!me?.admin) return null
+  return (
+    <NavLink href="/admin" icon={Shield}>
+      Admin
+    </NavLink>
   )
 }
 
@@ -40,6 +49,9 @@ export function SiteHeader() {
         <Show when="signed-in">
           <div className="flex shrink-0 items-center gap-2">
             <AdminLink />
+            <NavLink href="/settings" icon={Settings}>
+              Settings
+            </NavLink>
             <UserButton />
           </div>
         </Show>

@@ -1,6 +1,7 @@
 """House of Soft Beasts community calendar.
 
-The JSON API, under /api (see events.py and admin.py). The frontend is the
+The JSON API, under /api (see events.py, admin.py, share.py and
+google_calendar.py). The frontend is the
 `web` service in ../frontend, which forwards its /api requests here.
 
 GET /api/health   liveness, no sign-in needed
@@ -17,6 +18,7 @@ from pydantic.alias_generators import to_camel
 
 import admin
 import events
+import google_calendar
 import share
 from settings import settings
 
@@ -48,6 +50,7 @@ async def public_config() -> PublicConfig:
 app.include_router(events.router)
 app.include_router(admin.router)
 app.include_router(share.router)
+app.include_router(google_calendar.router)
 
 
 @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])

@@ -2,3 +2,11 @@
 # (clerk.hosb.invalid): tests never sign in through Clerk.
 clerk_publishable_key = "pk_test_Y2xlcmsuaG9zYi5pbnZhbGlkJA"
 authorized_parties = ["http://localhost:4000"]
+
+# Google Calendar sync, against the fake Google the system tests run
+# (systest/fake_google.py) on this port.
+google_client_id = "test-client.apps.googleusercontent.com"
+google_auth_url = "http://127.0.0.1:47365/o/oauth2/v2/auth"
+google_token_url = "http://127.0.0.1:47365/token"
+google_revoke_url = "http://127.0.0.1:47365/revoke"
+google_api_url = "http://127.0.0.1:47365/calendar/v3"

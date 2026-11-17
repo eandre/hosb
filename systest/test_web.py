@@ -54,3 +54,17 @@ async def test_passes_the_api_on(web: httpx.AsyncClient):
     deleted = await web.delete(f"/api/events/{event['id']}", headers=admin)
     assert deleted.status_code == 204
     assert (await web.get(f"/api/events/{event['id']}", headers=admin)).status_code == 404
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/internal/google-calendar/sync",
+        "/api/%69nternal/google-calendar/sync",
+        "//api//internal/google-calendar/sync",
+        "/api/events/../internal/google-calendar/sync",
+    ],
+)
+async def test_keeps_the_internal_routes_in(web: httpx.AsyncClient, path: str):
+    # Encore calls the cron jobs' routes on the community service itself.
+    assert (await web.post(path)).status_code == 404

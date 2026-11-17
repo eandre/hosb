@@ -6,3 +6,8 @@ clerk_publishable_key = "pk_test_cmVsYXhpbmctcGVyY2gtOTgzMy5jbGVyay5hY2NvdW50cy5
 # The origins allowed to have issued a session token (its `azp` claim), such as
 # "https://calendar.houseofsoftbeasts.se". Empty accepts any origin.
 authorized_parties = []
+
+# Google Calendar sync: the OAuth client's id ("....apps.googleusercontent.com"),
+# from the Google Cloud console. Empty turns the sync off. Its setup is in
+# google_calendar.py's doc.
+google_client_id = ""
