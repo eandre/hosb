@@ -7,16 +7,17 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
-from encore.testing import system
+from encore.services import httpx as services
 
 from conftest import session_token
 
 
 @pytest.fixture
 async def web() -> httpx.AsyncClient:
-    async with httpx.AsyncClient(
-        base_url=system.url("web"), headers=system.headers(), timeout=120
-    ) as client:
+    # The service itself, rather than its frontend's address, which a test
+    # session may not know yet when the suite starts. The client carries the
+    # test along. Its first call waits for Next.js's dev server to compile.
+    async with services.client("web", timeout=120) as client:
         yield client
 
 
