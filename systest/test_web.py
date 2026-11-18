@@ -1,10 +1,9 @@
-"""The web service: the Vite app, served on the webgw gateway, and the API it
-calls on the api gateway."""
+"""The web service, behind the api gateway: the Vite app, and the API at /api
+on the same origin, which it passes on to the community service."""
 
 from __future__ import annotations
 
 import re
-from urllib.parse import urlsplit
 
 import httpx
 import pytest
@@ -23,15 +22,14 @@ async def web() -> httpx.AsyncClient:
 
 @pytest.fixture
 async def gateway() -> httpx.AsyncClient:
-    """A client of the api gateway, as the world reaches it: from the
-    frontend's page, across origins."""
+    """A client of the api gateway, as the world reaches the app."""
     async with httpx.AsyncClient(
         base_url=system.url("api"), headers=system.headers(), timeout=60
     ) as client:
         yield client
 
 
-async def test_serves_the_app_and_tells_it_where_the_api_is(web: httpx.AsyncClient):
+async def test_serves_the_app(web: httpx.AsyncClient):
     page = await web.get("/")
     if page.status_code == 503 and "hasn't been built" in page.text:
         # Builds run the app's build (the prebuild hook); tests don't, so a
@@ -41,17 +39,12 @@ async def test_serves_the_app_and_tells_it_where_the_api_is(web: httpx.AsyncClie
     assert page.status_code == 200, page.text[:300]
     assert page.headers["content-type"].startswith("text/html")
     assert "<title>House of Soft Beasts · Calendar</title>" in page.text
-    config = re.search(r'<script>window.hosb = \{"apiURL":"([^"]+)"\}</script>', page.text)
-    assert config, page.text[:500]
-    # The api gateway's origin: here, its name on the session's app port.
-    told, session = urlsplit(config[1]), urlsplit(system.url("api"))
-    assert (told.hostname, told.port) == ("api.localhost", session.port), config[1]
 
     # The app's own routes get its page, which decides what's at them.
     for path in ("/events/2026-11-26-house-dinner", "/s/x-abc", "/settings"):
         routed = await web.get(path)
         assert routed.status_code == 200
-        assert "window.hosb" in routed.text
+        assert "<title>House of Soft Beasts · Calendar</title>" in routed.text
 
     # Its scripts, which are cached for good, and nothing for what's missing.
     script = re.search(r'src="(/assets/[^"]+\.js)"', page.text)
@@ -62,36 +55,27 @@ async def test_serves_the_app_and_tells_it_where_the_api_is(web: httpx.AsyncClie
     assert (await web.get("/assets/no-such-file.js")).status_code == 404
 
 
-async def test_the_gateway_exposes_the_api_to_the_frontend(gateway: httpx.AsyncClient):
+async def test_the_api_is_on_the_apps_origin(gateway: httpx.AsyncClient):
     assert (await gateway.get("/api/health")).json() == {"ok": True}
-    assert (await gateway.get("/api/events")).status_code == 401
 
-    # An origin that isn't the app's gets no leave to call it.
-    other = await gateway.get("/api/health", headers={"Origin": "https://evil.example"})
-    assert other.headers.get("access-control-allow-origin") != "https://evil.example"
+    # Statuses and headers come back as the API gave them.
+    anonymous = await gateway.get("/api/events")
+    assert anonymous.status_code == 401
+    assert anonymous.headers["www-authenticate"] == "Bearer"
 
-    # The page calls it from the webgw gateway's origin, with the member's
-    # token: locally the run's own, which the gateway allows besides those
-    # its config names.
-    webgw = urlsplit(system.url("webgw"))
-    web_origin = f"{webgw.scheme}://{webgw.netloc}"
-    token = session_token("user_erin", name="Erin", admin=True)
-    preflight = await gateway.options(
+    # Bodies, methods and query strings go through, with the member's token.
+    admin = {"Authorization": f"Bearer {session_token('user_erin', name='Erin', admin=True)}"}
+    created = await gateway.post(
         "/api/events",
-        headers={
-            "Origin": web_origin,
-            "Access-Control-Request-Method": "GET",
-            "Access-Control-Request-Headers": "authorization",
-        },
+        headers=admin,
+        json={"title": "Stitch & Bitch", "startsAt": "2030-01-05T18:00:00+00:00"},
     )
-    assert preflight.headers.get("access-control-allow-origin") == web_origin
-    assert "authorization" in preflight.headers.get("access-control-allow-headers", "").lower()
-    listed = await gateway.get(
-        "/api/events",
-        headers={"Authorization": f"Bearer {token}", "Origin": web_origin},
-    )
-    assert listed.status_code == 200, listed.text
-    assert listed.headers.get("access-control-allow-origin") == web_origin
+    assert created.status_code == 201, created.text
+    event = created.json()
+    listed = await gateway.get("/api/events", headers=admin, params={"scope": "upcoming"})
+    assert [e["id"] for e in listed.json()["events"]] == [event["id"]]
+    deleted = await gateway.delete(f"/api/events/{event['id']}", headers=admin)
+    assert deleted.status_code == 204
 
 
 @pytest.mark.parametrize(
@@ -102,6 +86,8 @@ async def test_the_gateway_exposes_the_api_to_the_frontend(gateway: httpx.AsyncC
         "/api/../internal/google-calendar/sync",
     ],
 )
-async def test_the_gateway_keeps_the_internal_routes_in(gateway: httpx.AsyncClient, path: str):
-    # Encore calls the cron jobs' routes on the community service itself.
-    assert (await gateway.post(path)).status_code == 404
+async def test_the_internal_routes_stay_in(gateway: httpx.AsyncClient, path: str):
+    # Encore calls the cron jobs' routes on the community service itself;
+    # through the gateway they're the app's pages (which take no POST), or
+    # the API's (which has no such route).
+    assert (await gateway.post(path)).status_code in (404, 405)

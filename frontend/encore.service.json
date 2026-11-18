@@ -2,7 +2,7 @@
   "name": "web",
   "lang": "go",
   "api": [
-    { "type": "http", "prefix": "/", "name": "web", "expose": ["webgw"] }
+    { "type": "http", "prefix": "/", "name": "web", "expose": true }
   ],
   "build": { "type": "go", "prebuild": "bun install --frozen-lockfile && bun run build" },
   "run": { "type": "go" },

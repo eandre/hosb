@@ -3,7 +3,7 @@
   "lang": "python",
   "run": { "type": "custom", "cmd": ["uv", "run", "main.py"] },
   "api": [
-    { "type": "http", "prefix": "/api", "name": "community", "expose": ["api"] },
+    { "type": "http", "prefix": "/api", "name": "community", "expose": false },
     { "type": "http", "prefix": "/internal", "name": "internal", "expose": false }
   ]
 }

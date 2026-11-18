@@ -1,7 +1,8 @@
-// Command web serves the members' calendar on the webgw gateway: the Vite app
-// in src/, built into dist/app before the program is (the build's prebuild
-// hook), and embedded in it. The app's page is told the URL of the api
-// gateway, where the community service's API is exposed, and calls it there.
+// Command web serves the members' calendar, behind the api gateway: the Vite
+// app in src/, built into dist/app before the program is (the build's
+// prebuild hook) and embedded in it, and the app's API, /api/*, which it
+// passes on to the community service. The page calls the API on its own
+// origin.
 package main
 
 import (
@@ -10,11 +11,15 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
+	"path"
+	"strings"
 	"time"
 
 	encore "sdk.encore.dev"
-	"sdk.encore.dev/gateways"
+	"sdk.encore.dev/services"
 	"sdk.encore.dev/shutdown"
 	"sdk.encore.dev/tracing"
 )
@@ -31,19 +36,19 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	app, err := newSite(built, gateways.URL("api"))
+	community, err := url.Parse(services.BaseURL("community"))
 	if err != nil {
-		slog.Error("the app can't be served", "err", err)
-		return
+		panic(err)
 	}
-
-	mux := http.NewServeMux()
-	mux.Handle("GET /{path...}", tracing.HTTPHandler("/{path...}", app))
+	h := handler(
+		tracing.HTTPHandler("/{path...}", newSite(built)),
+		tracing.HTTPHandler("/api/{path...}", apiProxy(community, services.Transport(nil))),
+	)
 
 	encore.Start()
 	srv := &http.Server{
 		Addr:              os.Getenv("ENCORE_LISTEN_ADDR"),
-		Handler:           mux,
+		Handler:           h,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	// Finish the requests in flight before Encore stops the service.
@@ -51,5 +56,39 @@ func main() {
 	slog.Info("serving the app", "addr", srv.Addr)
 	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		slog.Error("serving failed", "err", err)
+	}
+}
+
+// handler sends /api and what's below it to api, and the rest to app. The
+// path is judged as it reads once cleaned, which is as it's passed on.
+func handler(app, api http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		clean := path.Clean("/" + r.URL.Path)
+		if clean == "/api" || strings.HasPrefix(clean, "/api/") {
+			r.URL.Path, r.URL.RawPath = clean, ""
+			api.ServeHTTP(w, r)
+			return
+		}
+		app.ServeHTTP(w, r)
+	})
+}
+
+// apiProxy passes requests on to the community service as they came, path
+// and all, and its answers back as they went: redirects too, as Google's
+// sign-in callback answers with one. Encore's transport (services.Transport)
+// carries the request's trace on, and signs the call as the service's.
+func apiProxy(community *url.URL, transport http.RoundTripper) *httputil.ReverseProxy {
+	return &httputil.ReverseProxy{
+		Rewrite: func(r *httputil.ProxyRequest) {
+			r.SetURL(community)
+			r.SetXForwarded()
+		},
+		Transport: transport,
+		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			slog.ErrorContext(r.Context(), "the API could not be reached", "err", err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = w.Write([]byte(`{"detail":"the API could not be reached"}`))
+		},
 	}
 }

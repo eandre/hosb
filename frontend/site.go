@@ -1,9 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
-	"fmt"
 	"io/fs"
 	"net/http"
 	"path"
@@ -11,45 +8,31 @@ import (
 )
 
 // site serves a single-page app's built files: each file as it is, and the
-// app's page, index.html, for every other path, the app's own routes. The
-// page is told where the API is.
+// app's page, index.html, for every other path, the app's own routes.
 type site struct {
 	files fs.FS
-	// The app's page, with the script that tells it where the API is; nil if
-	// the app hasn't been built.
+	// The app's page; nil if the app hasn't been built.
 	page   []byte
 	static http.Handler
 }
 
-// pageConfig is what the page is told, as window.hosb (src/vite-env.d.ts).
-type pageConfig struct {
-	// The URL of the gateway the API is exposed on.
-	APIURL string `json:"apiURL"`
-}
-
-// newSite serves the app built into files, telling it the API is at apiURL.
-func newSite(files fs.FS, apiURL string) (*site, error) {
+// newSite serves the app built into files.
+func newSite(files fs.FS) *site {
 	s := &site{files: files, static: http.FileServerFS(files)}
-	page, err := fs.ReadFile(files, "index.html")
-	if err != nil {
-		// Unbuilt: every request says so, rather than the program not starting.
-		return s, nil
+	if page, err := fs.ReadFile(files, "index.html"); err == nil {
+		s.page = page
 	}
-	config, err := json.Marshal(pageConfig{APIURL: apiURL})
-	if err != nil {
-		return nil, err
-	}
-	// Marshal escapes <, > and &, so the value can't end the script early.
-	script := fmt.Sprintf("<script>window.hosb = %s</script>\n  </head>", config)
-	if !bytes.Contains(page, []byte("</head>")) {
-		return nil, fmt.Errorf("index.html has no </head> to put the page's config before")
-	}
-	s.page = bytes.Replace(page, []byte("</head>"), []byte(script), 1)
-	return s, nil
+	return s
 }
 
 func (s *site) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	if s.page == nil {
+		// Unbuilt: every request says so, rather than the program not starting.
 		http.Error(w, "The app hasn't been built: run `bun run build` in frontend/.", http.StatusServiceUnavailable)
 		return
 	}
