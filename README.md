@@ -9,8 +9,9 @@ It is an [Encore](https://encore.dev) v2 app:
 | Directory  | What it is |
 |------------|------------|
 | `backend/` | The `community` service: Python, FastAPI. The JSON API under `/api`, which the `api` gateway exposes. Postgres database `community`. |
-| `frontend/`| The `web` service: a Go program serving the frontend, a Vite app (React, Tailwind CSS and shadcn/ui, mobile first) embedded in it. Served from an origin of its own, it calls the API on the `api` gateway. |
-| `gateway/` | The `api` gateway, where the API is reached. Its CORS policy lets the `web` frontend call it. |
+| `frontend/`| The `web` service: a Go program serving the frontend, a Vite app (React, Tailwind CSS and shadcn/ui, mobile first) embedded in it, on the `webgw` gateway. It calls the API on the `api` gateway. |
+| `gateway/` | The `api` gateway, where the API is reached. Its CORS policy lets the app's pages call it. |
+| `webgw/`   | The `webgw` gateway, where the app is: it routes every path to `web`. |
 | `systest/` | System tests (`e2e`): pytest against the whole running app's API. |
 
 ## Authentication
@@ -122,11 +123,11 @@ cron trigger google-invitations`) and "Sync now" read them.
 
 ```sh
 cd frontend && bun install
-encore run   # the app at http://web.localhost:4000, its API at http://api.localhost:4000
+encore run   # the app at http://webgw.localhost:4000, its API at http://api.localhost:4000
 ```
 
-`web` is a Go service hosting a frontend (the `frontend` section of
-`frontend/encore.service.json`). Its build's `prebuild` step runs
+`web` is a Go service, exposed at `/` on the `webgw` gateway. Its build's
+`prebuild` step runs
 `bun run build`, which typechecks the Vite app in `frontend/src` and builds it
 into `frontend/dist/app`; then Encore's Go build compiles `main.go`, which
 embeds it (`//go:embed`). The program serves the app's files, and its page for
@@ -134,13 +135,14 @@ every other path, the app's own routes, with the `api` gateway's URL in it
 (`window.hosb.apiURL`, from `gateways.URL("api")`), which the app calls the API
 at.
 
-The frontend is served from an origin of its own, apart from the gateway's: a
-gateway can't route `/api` to `community` and every other path to `web`
-(ENC0029). Locally they are `web.localhost` and `api.localhost` on the app
-port; deployed, each has the environment's address, and a custom domain such as
-`www.hosb.se` belongs to the `web` frontend. The page calls the API across
-origins, with the member's session token, which the gateway's CORS policy allows
-the `web` frontend (`allow_frontends`).
+The app and its API are on two gateways: one can't route `/api` to
+`community` and every other path to `web`, as a path at `/` owns everything
+below it (ENC0029). Locally they are `webgw.localhost` and `api.localhost` on
+the app port; deployed, each has the environment's address, and a custom domain
+such as `www.hosb.se` belongs to `webgw`. The page calls the API across
+origins, with the member's session token, which the `api` gateway's CORS policy
+allows from the origins it lists (`allow_origins_with_credentials` in
+`gateway/encore.gateway.json`), and locally from the run's own.
 
 There is no hot reload: a change to the app is built when `web` is next
 restarted, as Encore restarts a service whose source changed. `bun run dev`

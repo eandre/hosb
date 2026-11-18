@@ -1,7 +1,7 @@
-// Command web serves the members' calendar: the Vite app in src/, built into
-// dist/app before the program is, and embedded in it. The app's page is told
-// the URL of the api gateway, where the community service's API is exposed;
-// the app calls it there, from the frontend's own origin.
+// Command web serves the members' calendar on the webgw gateway: the Vite app
+// in src/, built into dist/app before the program is (the build's prebuild
+// hook), and embedded in it. The app's page is told the URL of the api
+// gateway, where the community service's API is exposed, and calls it there.
 package main
 
 import (

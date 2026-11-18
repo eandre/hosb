@@ -1,5 +1,5 @@
-"""The web service: the Vite app, served from the frontend's own origin, and
-the API it calls on the api gateway."""
+"""The web service: the Vite app, served on the webgw gateway, and the API it
+calls on the api gateway."""
 
 from __future__ import annotations
 
@@ -70,13 +70,11 @@ async def test_the_gateway_exposes_the_api_to_the_frontend(gateway: httpx.AsyncC
     other = await gateway.get("/api/health", headers={"Origin": "https://evil.example"})
     assert other.headers.get("access-control-allow-origin") != "https://evil.example"
 
-    # The page calls it from the frontend's origin, with the member's token:
-    # where the session knows it, which a test session started fresh, as in
-    # a deploy's build, may not.
-    try:
-        web_origin = system.url("web")
-    except ValueError:
-        pytest.skip("this test session doesn't know the web frontend's origin")
+    # The page calls it from the webgw gateway's origin, with the member's
+    # token: locally the run's own, which the gateway allows besides those
+    # its config names.
+    webgw = urlsplit(system.url("webgw"))
+    web_origin = f"{webgw.scheme}://{webgw.netloc}"
     token = session_token("user_erin", name="Erin", admin=True)
     preflight = await gateway.options(
         "/api/events",
