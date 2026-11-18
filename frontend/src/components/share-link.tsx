@@ -1,7 +1,5 @@
-"use client"
-
 import { Check, Copy, Eye, Link2, Share2, UserPlus } from "lucide-react"
-import Link from "next/link"
+import { Link } from "react-router"
 import { useState, type FormEvent } from "react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -219,7 +217,7 @@ export function LinkRow({ link, showEvent }: { link: ShareLink; showEvent?: bool
         </p>
         <p className="mb-1 truncate text-xs text-muted-foreground">
           {showEvent ? (
-            <Link href={`/events/${link.eventSlug}`} className="hover:text-foreground hover:underline">
+            <Link to={`/events/${link.eventSlug}`} className="hover:text-foreground hover:underline">
               {link.eventTitle} · {formatDay(new Date(link.eventStartsAt))}
             </Link>
           ) : link.kind === "admin" ? (

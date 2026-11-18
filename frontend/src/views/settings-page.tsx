@@ -1,5 +1,3 @@
-"use client"
-
 import { CalendarSync, RefreshCw, TriangleAlert } from "lucide-react"
 import { useEffect, useState, type FormEvent } from "react"
 import { toast } from "sonner"

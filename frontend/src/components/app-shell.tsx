@@ -1,5 +1,3 @@
-"use client"
-
 import { ClerkFailed, ClerkLoaded, ClerkLoading, ClerkProvider, Show } from "@clerk/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { useState, type ReactNode } from "react"

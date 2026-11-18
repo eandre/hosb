@@ -13,11 +13,11 @@ from urllib.parse import parse_qs, urlsplit
 
 import httpx
 import pytest
+from encore.testing import system
 
 from conftest import ORIGIN, Member, community
 from fake_google import CLIENT_ID, FakeGoogle, serve
 
-CALLBACK = f"{ORIGIN}/api/google/callback"
 
 
 @pytest.fixture(scope="session")
@@ -82,9 +82,12 @@ async def connect(
     url = urlsplit(started["url"])
     params = {k: v[0] for k, v in parse_qs(url.query).items()}
     assert params["client_id"] == CLIENT_ID
-    assert params["redirect_uri"] == CALLBACK
+    # Back to the callback, on the api gateway, which exposes the API.
+    redirect = urlsplit(params["redirect_uri"])
+    assert redirect.path == "/api/google/callback"
+    assert redirect.hostname in ("api.localhost", urlsplit(system.url("api")).hostname)
     assert params["access_type"] == "offline"
-    code = google.consent(email, CALLBACK, **consent)
+    code = google.consent(email, params["redirect_uri"], **consent)
     # Google sends the browser back: no session token, the state says whose.
     return await browser.get(
         "/api/google/callback", params={"state": params["state"], "code": code}
@@ -294,5 +297,5 @@ async def test_the_hourly_sync_catches_up(
         """
     )
     # The cron job's route, on the community service, where Encore calls it.
-    expect(await anonymous.post("/api/internal/google-calendar/sync"), 204)
+    expect(await anonymous.post("/internal/google-calendar/sync"), 204)
     assert titles(google, "ada@gmail.com") == {"Quiet Arrival"}

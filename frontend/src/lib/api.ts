@@ -182,11 +182,15 @@ function describe(status: number, body: unknown): string {
   return `request failed (${status})`
 }
 
+/** Where the API is: the app's `api` gateway, whose URL the web service puts
+ * in the page (see main.go). Without it, as in `vite preview`, this origin. */
+export const apiURL = window.hosb?.apiURL ?? ""
+
 export async function request<T>(path: string, init: RequestInit = {}, token?: string | null): Promise<T> {
   const headers = new Headers(init.headers)
   if (token) headers.set("Authorization", `Bearer ${token}`)
   if (init.body) headers.set("Content-Type", "application/json")
-  const response = await fetch(path, { ...init, headers })
+  const response = await fetch(apiURL + path, { ...init, headers })
   if (response.status === 204) return undefined as T
   const body = await response.json().catch(() => null)
   if (!response.ok) throw new ApiError(response.status, describe(response.status, body))
@@ -328,7 +332,7 @@ export function useDownloadAttendees() {
   const { getToken } = useAuth()
   return useCallback(
     async (eventId: number) => {
-      const response = await fetch(`/api/admin/events/${eventId}/attendees.csv`, {
+      const response = await fetch(`${apiURL}/api/admin/events/${eventId}/attendees.csv`, {
         headers: { Authorization: `Bearer ${await getToken()}` },
       })
       if (!response.ok) {

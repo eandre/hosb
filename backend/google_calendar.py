@@ -19,7 +19,9 @@ How events reach a calendar:
   calendar-changes topic (calendar_changes.py), and this module's
   subscription syncs the calendars it touches.
 - Saving the settings, and "Sync now", sync the member's calendar at once.
-- Every hour a cron job syncs every calendar, catching up on what failed.
+- Every hour a cron job syncs every calendar, catching up on what failed,
+  at /internal/google-calendar/sync: outside /api, so the gateway doesn't
+  expose it.
 
 A sync compares what the calendar should hold with what was sent to it
 (google_synced_events), and adds, changes and removes the difference only.
@@ -29,8 +31,8 @@ Setting it up, per environment:
 - A Google Cloud project with the Google Calendar API enabled, its OAuth
   consent screen published (in testing, Google drops a connection after a
   week), and an OAuth client of type "Web application" whose authorized
-  redirect URIs are <origin>/api/google/callback for each origin the app is
-  served from, such as https://www.hosb.se/api/google/callback.
+  redirect URI is the api gateway's /api/google/callback, where the
+  environment serves its API.
 - The client's id in the google_client_id config value, and its secret in the
   GoogleClientSecret secret.
 - The GoogleTokenKey secret, which encrypts members' Google tokens.
@@ -50,7 +52,7 @@ from urllib.parse import quote, urlencode, urlsplit
 import httpx
 import jwt
 from cryptography.fernet import Fernet, InvalidToken
-from encore import pubsub
+from encore import gateways, pubsub
 from encore.cron import Job
 from encore.secrets import Secret
 from fastapi import APIRouter, HTTPException, Response
@@ -65,6 +67,8 @@ from settings import settings
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
+# Routes for Encore to call, not exposed by the gateway (encore.service.json).
+internal = APIRouter(prefix="/internal")
 
 client_secret = Secret[str](
     "GoogleClientSecret",
@@ -539,16 +543,16 @@ sync_changes = pubsub.Subscription[CalendarChange](
 
 sync_everyone_job = Job(
     "google-calendar-sync",
-    path="/api/internal/google-calendar/sync",
+    path="/internal/google-calendar/sync",
     title="Sync members' Google calendars",
     every="1h",
 )
 
 
-@router.post("/internal/google-calendar/sync", status_code=204)
+@internal.post("/google-calendar/sync", status_code=204)
 async def sync_everyone() -> Response:
     """Every calendar brought up to date, for what its changes missed. Called
-    by the cron job; the web service doesn't pass /api/internal on."""
+    by the cron job."""
     rows = await db.query(
         "SELECT user_id FROM google_connections WHERE status = 'ok' AND calendar_id IS NOT NULL"
     ).all()
@@ -619,8 +623,9 @@ async def connected(user_id: str) -> Google:
 
 
 def check_origin(origin: str) -> str:
-    """The app's origin as the member's browser has it, which Google sends
-    them back to: one the app is served from, where the environment says."""
+    """The frontend's origin as the member's browser has it, which they are
+    sent back to from Google, and the events link to: one the app is served
+    from, where the environment says."""
     parts = urlsplit(origin.strip())
     if parts.scheme not in ("http", "https") or not parts.netloc or parts.path not in ("", "/"):
         raise HTTPException(status_code=422, detail="origin: give the app's origin, as https://host")
@@ -631,8 +636,10 @@ def check_origin(origin: str) -> str:
     return origin
 
 
-def redirect_uri(origin: str) -> str:
-    return f"{origin}/api/google/callback"
+def redirect_uri() -> str:
+    """Where Google sends the member back to: the callback, on the gateway
+    the API is exposed on. Registered with the OAuth client."""
+    return f"{gateways.url('api')}/api/google/callback"
 
 
 @router.get("/google")
@@ -665,7 +672,7 @@ async def connect(body: ConnectIn, user: Member) -> ConnectOut:
     )
     params = {
         "client_id": settings.value.google_client_id,
-        "redirect_uri": redirect_uri(origin),
+        "redirect_uri": redirect_uri(),
         "response_type": "code",
         "scope": " ".join(SCOPES),
         # A refresh token, to sync while the member is away; asked for again
@@ -707,7 +714,7 @@ async def callback(
     require_setup()
     try:
         tokens = await token_request(
-            {"grant_type": "authorization_code", "code": code, "redirect_uri": redirect_uri(origin)}
+            {"grant_type": "authorization_code", "code": code, "redirect_uri": redirect_uri()}
         )
     except (GoogleError, ReauthNeeded):
         logger.warning("exchanging a Google code failed", exc_info=True, extra={"user": user_id})

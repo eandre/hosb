@@ -1,7 +1,5 @@
-"use client"
-
 import { CalendarDays, CheckCircle2, Clock, MapPin, Users } from "lucide-react"
-import { useParams, useRouter } from "next/navigation"
+import { useNavigate, useParams } from "react-router"
 import { useEffect, useRef, useState, type FormEvent } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,15 +13,15 @@ import { formatLongDate, formatTimeRange } from "@/lib/dates"
  * where they sign up. */
 export function SharePage() {
   // <slug>-<token>: the token finds the link, the slug is for reading.
-  const token = useParams<{ link: string }>().link
+  const token = useParams<{ link: string }>().link!
   const { data, isPending, error } = useShared(token)
-  const router = useRouter()
+  const navigate = useNavigate()
 
   // The event's slug may have changed since the link was made: show the
   // link as it reads now.
   useEffect(() => {
-    if (data && data.path !== `/s/${token}`) router.replace(data.path)
-  }, [data, token, router])
+    if (data && data.path !== `/s/${token}`) navigate(data.path, { replace: true })
+  }, [data, token, navigate])
 
   // One view per page load: the API counts people by this browser's id.
   const counted = useRef(false)

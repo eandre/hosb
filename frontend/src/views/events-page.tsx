@@ -1,9 +1,7 @@
-"use client"
-
 import { useUser } from "@clerk/react"
 import { Plus } from "lucide-react"
 import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useNavigate } from "react-router"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { EventFormModal } from "@/components/event-form"
@@ -28,7 +26,7 @@ function Past() {
 export function EventsPage() {
   const { user } = useUser()
   const { data: me } = useMe()
-  const router = useRouter()
+  const navigate = useNavigate()
   const [creating, setCreating] = useState(false)
   const [day, setDay] = useState<Date | undefined>()
 
@@ -80,7 +78,7 @@ export function EventsPage() {
             open={creating}
             onOpenChange={setCreating}
             date={day}
-            onSaved={(event) => router.push(`/events/${event.slug}`)}
+            onSaved={(event) => navigate(`/events/${event.slug}`)}
           />
         </>
       )}

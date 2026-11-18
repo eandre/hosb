@@ -1,6 +1,4 @@
-"use client"
-
-import { usePathname } from "next/navigation"
+import { useLocation } from "react-router"
 import { useEffect, useState, type ReactNode } from "react"
 import { AppShell } from "@/components/app-shell"
 import { GuestShell } from "@/components/guest-shell"
@@ -13,7 +11,7 @@ type State = { status: "loading" } | { status: "ready"; key: string } | { status
 /** Starts the app once the API has said which Clerk instance to sign in
  * with: the key is the environment's, so one build serves every one. */
 export function Bootstrap({ children }: { children: ReactNode }) {
-  const guest = usePathname().startsWith("/s/")
+  const guest = useLocation().pathname.startsWith("/s/")
   const [state, setState] = useState<State>({ status: "loading" })
 
   useEffect(() => {

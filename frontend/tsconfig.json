@@ -16,7 +16,6 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "incremental": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
@@ -25,19 +24,15 @@
         "./src/*"
       ]
     },
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ]
+    "types": [
+      "vite/client",
+      "node"
+    ],
+    "verbatimModuleSyntax": true
   },
   "include": [
-    "next-env.d.ts",
     "src",
-    ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts",
-    ".next-test/types/**/*.ts",
-    ".next-test/dev/types/**/*.ts"
+    "vite.config.ts"
   ],
   "exclude": [
     "node_modules"

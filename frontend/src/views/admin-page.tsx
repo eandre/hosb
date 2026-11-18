@@ -1,5 +1,3 @@
-"use client"
-
 import {
   CalendarDays,
   Download,
@@ -13,8 +11,7 @@ import {
   Users,
 } from "lucide-react"
 import { useMemo, useState, type ReactNode } from "react"
-import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { Link, useNavigate } from "react-router"
 import { toast } from "sonner"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -61,7 +58,7 @@ function initials(name: string) {
 export function AdminPage() {
   const { data: me, isPending } = useMe()
   const [creating, setCreating] = useState(false)
-  const router = useRouter()
+  const navigate = useNavigate()
 
   if (isPending) return <Skeleton className="h-10 w-48" />
   if (!me?.admin) {
@@ -69,7 +66,7 @@ export function AdminPage() {
       <div className="py-16 text-center">
         <p className="text-muted-foreground">This page is for the house's admins.</p>
         <Button asChild variant="link" className="mt-2">
-          <Link href="/">Back to the calendar</Link>
+          <Link to="/">Back to the calendar</Link>
         </Button>
       </div>
     )
@@ -115,7 +112,7 @@ export function AdminPage() {
       <EventFormModal
         open={creating}
         onOpenChange={setCreating}
-        onSaved={(event) => router.push(`/events/${event.slug}`)}
+        onSaved={(event) => navigate(`/events/${event.slug}`)}
       />
     </div>
   )
@@ -203,7 +200,7 @@ function AdminEventRow({ event }: { event: CalendarEvent }) {
         <span className="font-heading text-xl leading-6 tabular-nums">{start.getDate()}</span>
       </div>
       <div className="min-w-0 flex-1">
-        <Link href={`/events/${event.slug}`} className="block truncate text-base font-medium hover:underline">
+        <Link to={`/events/${event.slug}`} className="block truncate text-base font-medium hover:underline">
           {event.title}
         </Link>
         <p className="text-sm text-muted-foreground tabular-nums">

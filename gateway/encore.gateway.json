@@ -1,1 +1,8 @@
-{ "name": "api", "default": true }
+{
+  "name": "api",
+  "default": true,
+  "cors": {
+    "allow_frontends": ["web"],
+    "expose_headers": ["content-disposition"]
+  }
+}

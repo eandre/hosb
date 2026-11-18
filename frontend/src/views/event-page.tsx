@@ -1,9 +1,6 @@
-"use client"
-
 import { ArrowLeft, CalendarDays, Clock, MapPin, Minus, Pencil, Plus, Trash2, Users } from "lucide-react"
 import { useEffect, useState } from "react"
-import Link from "next/link"
-import { useParams, useRouter } from "next/navigation"
+import { Link, useNavigate, useParams } from "react-router"
 import { toast } from "sonner"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -45,15 +42,15 @@ function initials(name: string) {
 }
 
 export function EventPage() {
-  const ref = useParams<{ slug: string }>().slug
+  const ref = useParams<{ slug: string }>().slug!
   const { data: event, isPending, error } = useEvent(ref)
   const { data: me } = useMe()
-  const router = useRouter()
+  const navigate = useNavigate()
 
   // Reached by an id, or a slug the event had: show its own address.
   useEffect(() => {
-    if (event && event.slug !== ref) router.replace(`/events/${event.slug}`)
-  }, [event, ref, router])
+    if (event && event.slug !== ref) navigate(`/events/${event.slug}`, { replace: true })
+  }, [event, ref, navigate])
 
   if (error) {
     return (
@@ -62,7 +59,7 @@ export function EventPage() {
           {error instanceof ApiError && error.status === 404 ? "This event doesn't exist, or was cancelled." : error.message}
         </p>
         <Button asChild variant="link" className="mt-2">
-          <Link href="/">Back to the calendar</Link>
+          <Link to="/">Back to the calendar</Link>
         </Button>
       </div>
     )
@@ -82,7 +79,7 @@ export function EventPage() {
     <article>
       <div className="mb-4 flex items-center justify-between gap-2">
         <Button asChild variant="ghost" size="sm" className="-ml-2">
-          <Link href="/">
+          <Link to="/">
             <ArrowLeft /> Calendar
           </Link>
         </Button>
@@ -302,7 +299,7 @@ function Guests({ guests }: { guests: GuestSignup[] }) {
 function AdminActions({ event }: { event: EventDetail }) {
   const [editing, setEditing] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const router = useRouter()
+  const navigate = useNavigate()
 
   return (
     <div className="flex gap-2">
@@ -317,9 +314,9 @@ function AdminActions({ event }: { event: EventDetail }) {
         onOpenChange={setEditing}
         event={event}
         // A new title or date is a new slug, and with it a new address.
-        onSaved={(saved) => router.replace(`/events/${saved.slug}`)}
+        onSaved={(saved) => navigate(`/events/${saved.slug}`, { replace: true })}
       />
-      <DeleteEventDialog event={event} open={deleting} onOpenChange={setDeleting} onDeleted={() => router.push("/")} />
+      <DeleteEventDialog event={event} open={deleting} onOpenChange={setDeleting} onDeleted={() => navigate("/")} />
     </div>
   )
 }

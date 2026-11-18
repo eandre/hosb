@@ -8,9 +8,9 @@ It is an [Encore](https://encore.dev) v2 app:
 
 | Directory  | What it is |
 |------------|------------|
-| `backend/` | The `community` service: Python, FastAPI. The JSON API under `/api`, which the gateway doesn't route to: `web` passes it on. Postgres database `community`. |
-| `frontend/`| The `web` service: Next.js, React, Tailwind CSS and shadcn/ui, mobile first. It hosts the frontend, and passes `/api` on its own origin to `community`. |
-| `gateway/` | The `api` gateway, the app's one public address. It routes every path to `web`. |
+| `backend/` | The `community` service: Python, FastAPI. The JSON API under `/api`, which the `api` gateway exposes. Postgres database `community`. |
+| `frontend/`| The `web` service: a Go program serving the frontend, a Vite app (React, Tailwind CSS and shadcn/ui, mobile first) embedded in it. Served from an origin of its own, it calls the API on the `api` gateway. |
+| `gateway/` | The `api` gateway, where the API is reached. Its CORS policy lets the `web` frontend call it. |
 | `systest/` | System tests (`e2e`): pytest against the whole running app's API. |
 
 ## Authentication
@@ -77,9 +77,9 @@ To set it up for an environment:
 
 2. **Create an OAuth client** (Credentials → Create credentials → OAuth client
    ID, type "Web application"), with an authorized redirect URI of
-   `<origin>/api/google/callback` for each origin the app is served from, such
-   as `https://www.hosb.se/api/google/callback` and
-   `https://hosb.se/api/google/callback`.
+   the `api` gateway's `/api/google/callback` in each environment, such as
+   `http://api.localhost:4000/api/google/callback` locally: the callback is
+   part of the API.
 
 3. **Give the app the client**: its id as `google_client_id` in
    `backend/settings.config.toml` (or an environment's overlay), and its secret
@@ -103,24 +103,33 @@ Until `google_client_id` is set, the settings page says the sync isn't set up.
 
 ```sh
 cd frontend && bun install
-encore run   # the app, and its API at /api, at http://api.localhost:4000
+encore run   # the app at http://web.localhost:4000, its API at http://api.localhost:4000
 ```
 
-`encore run` runs `web` as Next.js's dev server, with hot reload, through
-`frontend/server.mjs`: it serves the app where Encore assigns the service, and
-passes `/api` requests on to `community` with Encore's service client, so the
-browser talks to one origin and each API call continues the page request's
-trace.
+`web` is a Go service hosting a frontend (the `frontend` section of
+`frontend/encore.service.json`). Its build's `prebuild` step runs
+`bun run build`, which typechecks the Vite app in `frontend/src` and builds it
+into `frontend/dist/app`; then Encore's Go build compiles `main.go`, which
+embeds it (`//go:embed`). The program serves the app's files, and its page for
+every other path, the app's own routes, with the `api` gateway's URL in it
+(`window.hosb.apiURL`, from `gateways.URL("api")`), which the app calls the API
+at.
 
-Deployed, Encore builds `web` with its package's `build` script: `next build`,
-then `scripts/release.mjs` packages Next.js's standalone output (only the files
-its server loads), its static files, `server.mjs` and the packages
-`server.mjs` loads itself (Encore's SDK) into `$ENCORE_OUTPUT_DIR`, which is all
-the image holds, about 50 MB. The image starts `node server.mjs`, which serves
-the build in production mode.
+The frontend is served from an origin of its own, apart from the gateway's: a
+gateway can't route `/api` to `community` and every other path to `web`
+(ENC0029). Locally they are `web.localhost` and `api.localhost` on the app
+port; deployed, each has the environment's address, and a custom domain such as
+`www.hosb.se` belongs to the `web` frontend. The page calls the API across
+origins, with the member's session token, which the gateway's CORS policy allows
+the `web` frontend (`allow_frontends`).
 
-`frontend/` likewise uses the TypeScript SDK from the Encore checkout
-(`@encore.dev/sdk` as a `file:` dependency).
+There is no hot reload: a change to the app is built when `web` is next
+restarted, as Encore restarts a service whose source changed. `bun run dev`
+serves the app alone with Vite's dev server, without the API.
+
+Encore gives the Go program its SDK, `sdk.encore.dev`, through a Go workspace
+of its own, so `frontend/` builds under Encore (`encore run`, `encore test`,
+`encore build`) and not with a plain `go build`.
 
 The backend's Python environment is managed with uv (`backend/pyproject.toml`).
 This app was made with a development build of Encore, whose Python SDK is not

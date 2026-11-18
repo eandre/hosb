@@ -1,11 +1,8 @@
 {
   "name": "web",
-  "lang": "typescript",
+  "lang": "go",
   "frontend": {},
-  "api": [
-    { "type": "http", "prefix": "/", "name": "web", "expose": true }
-  ],
-  "run": { "type": "custom", "cmd": ["node", "server.mjs", "--dev"] },
-  "build": { "type": "script", "script": "build" },
-  "docker": { "entrypoint": ["node", "/app/server.mjs"] }
+  "build": { "type": "go", "prebuild": "bun install --frozen-lockfile && bun run build" },
+  "run": { "type": "go" },
+  "test": { "type": "go" }
 }
