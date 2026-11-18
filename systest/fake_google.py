@@ -113,8 +113,12 @@ class FakeGoogle:
         return event
 
     def answers(self, calendar_id: str, title: str) -> dict[str, str]:
-        """Each guest's answer to the event of that title."""
-        return {a["email"]: a["responseStatus"] for a in self.invitation(calendar_id, title).get("attendees", [])}
+        """Each guest's answer to the event of that title: none while there
+        is no such event, as before a sync has made it."""
+        events = [e for e in self.events(calendar_id) if e["summary"] == title]
+        if len(events) != 1:
+            return {}
+        return {a["email"]: a["responseStatus"] for a in events[0].get("attendees", [])}
 
     def writes_to(self, event_id: str) -> list[tuple[str, str]]:
         """The changes made to an event: (method, sendUpdates)."""

@@ -33,6 +33,11 @@ async def gateway() -> httpx.AsyncClient:
 
 async def test_serves_the_app_and_tells_it_where_the_api_is(web: httpx.AsyncClient):
     page = await web.get("/")
+    if page.status_code == 503 and "hasn't been built" in page.text:
+        # Builds run the app's build (the prebuild hook); tests don't, so a
+        # checkout that hasn't built it serves this. site_test.go covers
+        # the serving without it.
+        pytest.skip("the app isn't built in this checkout: run `bun run build` in frontend/")
     assert page.status_code == 200, page.text[:300]
     assert page.headers["content-type"].startswith("text/html")
     assert "<title>House of Soft Beasts · Calendar</title>" in page.text
@@ -61,28 +66,34 @@ async def test_the_gateway_exposes_the_api_to_the_frontend(gateway: httpx.AsyncC
     assert (await gateway.get("/api/health")).json() == {"ok": True}
     assert (await gateway.get("/api/events")).status_code == 401
 
-    # The page calls it from the frontend's origin, with the member's token.
+    # An origin that isn't the app's gets no leave to call it.
+    other = await gateway.get("/api/health", headers={"Origin": "https://evil.example"})
+    assert other.headers.get("access-control-allow-origin") != "https://evil.example"
+
+    # The page calls it from the frontend's origin, with the member's token:
+    # where the session knows it, which a test session started fresh, as in
+    # a deploy's build, may not.
+    try:
+        web_origin = system.url("web")
+    except ValueError:
+        pytest.skip("this test session doesn't know the web frontend's origin")
     token = session_token("user_erin", name="Erin", admin=True)
     preflight = await gateway.options(
         "/api/events",
         headers={
-            "Origin": system.url("web"),
+            "Origin": web_origin,
             "Access-Control-Request-Method": "GET",
             "Access-Control-Request-Headers": "authorization",
         },
     )
-    assert preflight.headers.get("access-control-allow-origin") == system.url("web")
+    assert preflight.headers.get("access-control-allow-origin") == web_origin
     assert "authorization" in preflight.headers.get("access-control-allow-headers", "").lower()
     listed = await gateway.get(
         "/api/events",
-        headers={"Authorization": f"Bearer {token}", "Origin": system.url("web")},
+        headers={"Authorization": f"Bearer {token}", "Origin": web_origin},
     )
     assert listed.status_code == 200, listed.text
-    assert listed.headers.get("access-control-allow-origin") == system.url("web")
-
-    # An origin that isn't the app's gets no such leave.
-    other = await gateway.get("/api/health", headers={"Origin": "https://evil.example"})
-    assert other.headers.get("access-control-allow-origin") != "https://evil.example"
+    assert listed.headers.get("access-control-allow-origin") == web_origin
 
 
 @pytest.mark.parametrize(
