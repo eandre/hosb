@@ -1,6 +1,5 @@
 {
   "name": "api",
-  "default": true,
   "cors": {
     "allow_origins_with_credentials": ["https://www.hosb.se", "https://hosb.se"],
     "expose_headers": ["content-disposition"]

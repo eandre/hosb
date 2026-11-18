@@ -11,7 +11,7 @@ It is an [Encore](https://encore.dev) v2 app:
 | `backend/` | The `community` service: Python, FastAPI. The JSON API under `/api`, which the `api` gateway exposes. Postgres database `community`. |
 | `frontend/`| The `web` service: a Go program serving the frontend, a Vite app (React, Tailwind CSS and shadcn/ui, mobile first) embedded in it, on the `webgw` gateway. It calls the API on the `api` gateway. |
 | `gateway/` | The `api` gateway, where the API is reached. Its CORS policy lets the app's pages call it. |
-| `webgw/`   | The `webgw` gateway, where the app is: it routes every path to `web`. |
+| `webgw/`   | The `webgw` gateway, where the app is: it routes every path to `web`. It is the default gateway, as Encore Cloud gives an environment's custom domains (`www.hosb.se`) to that one only. |
 | `systest/` | System tests (`e2e`): pytest against the whole running app's API. |
 
 ## Authentication
@@ -139,7 +139,9 @@ The app and its API are on two gateways: one can't route `/api` to
 `community` and every other path to `web`, as a path at `/` owns everything
 below it (ENC0029). Locally they are `webgw.localhost` and `api.localhost` on
 the app port; deployed, each has the environment's address, and a custom domain
-such as `www.hosb.se` belongs to `webgw`. The page calls the API across
+such as `www.hosb.se` belongs to `webgw`, the default gateway: Encore Cloud
+gives custom domains to the default gateway only. `api` answers at its own
+address, such as `https://api-production-thehouse-8gd2.encr.app`. The page calls the API across
 origins, with the member's session token, which the `api` gateway's CORS policy
 allows from the origins it lists (`allow_origins_with_credentials` in
 `gateway/encore.gateway.json`), and locally from the run's own.
