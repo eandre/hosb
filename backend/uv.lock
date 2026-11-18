@@ -132,7 +132,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "cryptography", specifier = ">=44" },
-    { name = "encore-dev", editable = "../../../encoredev/v2-encore/sdk/py/infra" },
+    { name = "encore-dev", specifier = "==2.0.0b10" },
     { name = "fastapi", specifier = ">=0.143" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "pyjwt", extras = ["crypto"], specifier = ">=2.10" },
@@ -210,47 +210,15 @@ wheels = [
 
 [[package]]
 name = "encore-dev"
-version = "0.1.0"
-source = { editable = "../../../encoredev/v2-encore/sdk/py/infra" }
+version = "2.0.0b10"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "opentelemetry-api" },
     { name = "typing-extensions" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiohttp", marker = "python_full_version >= '3.10' and extra == 'aiohttp'", specifier = ">=3.14.4" },
-    { name = "connectrpc", marker = "python_full_version >= '3.11' and extra == 'grpc'", specifier = ">=0.10.1,<0.11" },
-    { name = "httpx", marker = "extra == 'httpx'", specifier = ">=0.27" },
-    { name = "niquests", marker = "extra == 'niquests'", specifier = ">=3.19" },
-    { name = "opentelemetry-api", specifier = ">=1.27" },
-    { name = "pyqwest", marker = "python_full_version >= '3.11' and extra == 'grpc'", specifier = ">=0.12" },
-    { name = "requests", marker = "python_full_version >= '3.10' and extra == 'requests'", specifier = ">=2.34" },
-    { name = "typing-extensions", specifier = ">=4.13" },
-]
-provides-extras = ["httpx", "requests", "aiohttp", "niquests", "grpc"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "aiohttp", marker = "python_full_version >= '3.10'", specifier = ">=3.14.4" },
-    { name = "connectrpc", marker = "python_full_version >= '3.11'", specifier = ">=0.10.1,<0.11" },
-    { name = "django", marker = "python_full_version >= '3.10'", specifier = ">=5,<6" },
-    { name = "fastapi", marker = "python_full_version >= '3.10'", specifier = ">=0.156" },
-    { name = "httpx", specifier = ">=0.27" },
-    { name = "hypercorn", marker = "python_full_version >= '3.11'", specifier = ">=0.17" },
-    { name = "hypothesis", specifier = ">=6" },
-    { name = "niquests", specifier = ">=3.19" },
-    { name = "opentelemetry-instrumentation-asgi", specifier = ">=0.48b0" },
-    { name = "opentelemetry-instrumentation-wsgi", specifier = ">=0.48b0" },
-    { name = "prek", specifier = ">=0.5.3" },
-    { name = "psycopg", marker = "python_full_version >= '3.10'", specifier = ">=3.1" },
-    { name = "pydantic", specifier = ">=2,<3" },
-    { name = "pyqwest", marker = "python_full_version >= '3.11'", specifier = ">=0.12" },
-    { name = "pytest", specifier = ">=8" },
-    { name = "pytest-asyncio", specifier = ">=0.24" },
-    { name = "requests", marker = "python_full_version >= '3.10'", specifier = ">=2.34" },
-    { name = "ruff", specifier = ">=0.16.8" },
-    { name = "ty", specifier = ">=0.0.84" },
+sdist = { url = "https://files.pythonhosted.org/packages/c4/21/f01b0939485a6e33822ecde759482cbeedff9376930f58dd6fd98e0c0d65/encore_dev-2.0.0b10.tar.gz", hash = "sha256:54ce009ed7bd41f75a5155ceed4ffacce25b4a601fd0b988995ef250cade47b7", size = 246775, upload-time = "2026-11-18T21:56:29.242Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/68/cf/9e719787460fe8f2e256bb9d70b15c8ba2546015c2b1c18d9858517a7968/encore_dev-2.0.0b10-py3-none-any.whl", hash = "sha256:62533311b1fc2547b379efd1f78ae231addc54fff01707d97cc88a08e0bab1a3", size = 284025, upload-time = "2026-11-18T21:56:27.966Z" },
 ]
 
 [[package]]

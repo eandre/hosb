@@ -4,7 +4,8 @@ version = "0.1.0"
 description = "House of Soft Beasts community calendar: events and RSVPs for members"
 requires-python = ">=3.14"
 dependencies = [
-    "encore-dev",
+    # Encore's SDK, the version of the Encore that runs the app (2.0.0-beta.10).
+    "encore-dev==2.0.0b10",
     "fastapi>=0.143",
     # Verifies Clerk session tokens (RS256 JWTs) against the instance's public key.
     "pyjwt[crypto]>=2.10",
@@ -24,11 +25,6 @@ dev = ["pytest>=8", "pytest-asyncio>=0.24"]
 # free-threaded build, which Encore's runtime isn't built for everywhere.
 python-preference = "system"
 
-# This app runs on a development build of Encore, whose SDK is not published:
-# use the checkout's. With a released Encore, drop this and pin encore-dev to
-# its version (the CLI aligns it).
-[tool.uv.sources]
-encore-dev = { path = "../../../encoredev/v2-encore/sdk/py/infra", editable = true }
 
 [tool.ruff]
 line-length = 100

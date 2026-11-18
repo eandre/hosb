@@ -150,11 +150,10 @@ Encore gives the Go program its SDK, `sdk.encore.dev`, through a Go workspace
 of its own, so `frontend/` builds under Encore (`encore run`, `encore test`,
 `encore build`) and not with a plain `go build`.
 
-The backend's Python environment is managed with uv (`backend/pyproject.toml`).
-This app was made with a development build of Encore, whose Python SDK is not
-published, so `backend/` and `systest/` use the SDK from a checkout of Encore
-beside this repository (`[tool.uv.sources]`). With a released Encore, remove
-that and depend on `encore-dev` from PyPI.
+The app runs on Encore 2.0.0-beta.10, and uses the SDK of that version:
+`encore-dev==2.0.0b10` from PyPI in `backend/` and `systest/` (uv), and for
+`web` the Go SDK Encore installs with it. Moving to another Encore moves the
+pins with it: its CLI aligns them (`uv lock`).
 
 ## API
 
