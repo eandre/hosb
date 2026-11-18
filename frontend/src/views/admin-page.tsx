@@ -3,6 +3,7 @@ import {
   Download,
   ExternalLink,
   Link2,
+  MailCheck,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -29,6 +30,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { DeleteEventDialog } from "@/components/delete-event-dialog"
 import { EventFormModal } from "@/components/event-form"
+import { OrganizerCard } from "@/components/organizer-card"
 import { LinkRow } from "@/components/share-link"
 import {
   useAdminMembers,
@@ -41,6 +43,7 @@ import {
   type CalendarEvent,
 } from "@/lib/api"
 import { ago, formatTimeRange } from "@/lib/dates"
+import { useGoogleResult } from "@/lib/google-result"
 import { placesLeft } from "@/lib/events"
 import { cn } from "@/lib/utils"
 
@@ -59,6 +62,11 @@ export function AdminPage() {
   const { data: me, isPending } = useMe()
   const [creating, setCreating] = useState(false)
   const navigate = useNavigate()
+  useGoogleResult("/admin")
+  // Back from connecting the house's account: its tab.
+  const [tab, setTab] = useState(() =>
+    new URLSearchParams(window.location.search).has("google") ? "invitations" : "events",
+  )
 
   if (isPending) return <Skeleton className="h-10 w-48" />
   if (!me?.admin) {
@@ -86,7 +94,7 @@ export function AdminPage() {
 
       <Stats />
 
-      <Tabs defaultValue="events" className="mt-8">
+      <Tabs value={tab} onValueChange={setTab} className="mt-8">
         <TabsList className="mb-5 w-full sm:w-auto">
           <TabsTrigger value="events" className="flex-1 sm:flex-none">
             <CalendarDays /> Events
@@ -97,6 +105,9 @@ export function AdminPage() {
           <TabsTrigger value="links" className="flex-1 sm:flex-none">
             <Link2 /> Links
           </TabsTrigger>
+          <TabsTrigger value="invitations" className="flex-1 sm:flex-none">
+            <MailCheck /> <span className="sr-only sm:not-sr-only">Invitations</span>
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="events">
           <EventsTab />
@@ -106,6 +117,9 @@ export function AdminPage() {
         </TabsContent>
         <TabsContent value="links">
           <LinksTab />
+        </TabsContent>
+        <TabsContent value="invitations">
+          <OrganizerCard />
         </TabsContent>
       </Tabs>
 

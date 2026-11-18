@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import AsyncIterator, Callable, Iterator
+from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
@@ -16,16 +16,8 @@ import pytest
 from encore.testing import system
 
 from conftest import ORIGIN, Member, community
-from fake_google import CLIENT_ID, FakeGoogle, serve
+from fake_google import CLIENT_ID, FakeGoogle
 
-
-
-@pytest.fixture(scope="session")
-def fake() -> Iterator[FakeGoogle]:
-    google = FakeGoogle()
-    server = serve(google)
-    yield google
-    server.shutdown()
 
 
 @pytest.fixture

@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import secrets
 import threading
+import time
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -38,6 +39,10 @@ class Calendar:
     access_role: str = "owner"
     primary: bool = False
     events: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # Deleted events, as a sync lists them: cancelled.
+    cancelled: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # When each event last changed, by the fake's change counter.
+    changed: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -61,6 +66,10 @@ class FakeGoogle:
             self.refresh_tokens: dict[str, str] = {}  # token: email
             self.access_tokens: dict[str, str] = {}  # token: email
             self.revoked: list[str] = []
+            # Every change to an event: (method, calendar, event id, sendUpdates).
+            self.writes: list[tuple[str, str, str, str]] = []
+            self.watches: list[dict[str, Any]] = []
+            self.seq = 0
 
     # --- for the tests ---
 
@@ -86,6 +95,35 @@ class FakeGoogle:
     def calendars_of(self, email: str) -> list[Calendar]:
         with self.lock:
             return [c for c in self.calendars.values() if c.owner == email]
+
+    def respond(self, calendar_id: str, event_id: str, attendee: str, answer: str) -> None:
+        """A guest answers an invitation in their calendar."""
+        with self.lock:
+            event = self.calendars[calendar_id].events[event_id]
+            for a in event.get("attendees", []):
+                if a["email"] == attendee:
+                    a["responseStatus"] = answer
+                    break
+            else:
+                raise AssertionError(f"{attendee} isn't invited to {event_id}")
+            self._touch(self.calendars[calendar_id], event_id)
+
+    def invitation(self, calendar_id: str, title: str) -> dict[str, Any]:
+        [event] = [e for e in self.events(calendar_id) if e["summary"] == title]
+        return event
+
+    def answers(self, calendar_id: str, title: str) -> dict[str, str]:
+        """Each guest's answer to the event of that title."""
+        return {a["email"]: a["responseStatus"] for a in self.invitation(calendar_id, title).get("attendees", [])}
+
+    def writes_to(self, event_id: str) -> list[tuple[str, str]]:
+        """The changes made to an event: (method, sendUpdates)."""
+        with self.lock:
+            return [(m, u) for m, _, e, u in self.writes if e == event_id]
+
+    def _touch(self, calendar: Calendar, event_id: str) -> None:
+        self.seq += 1
+        calendar.changed[event_id] = self.seq
 
     def revoke_all(self, email: str) -> None:
         """The member removes the app's access in their Google account."""
@@ -148,25 +186,62 @@ class FakeGoogle:
                     calendar_id = f"c_{secrets.token_hex(6)}@group.calendar.google.com"
                     self.calendars[calendar_id] = Calendar(calendar_id, email, body["summary"])
                     return 200, {"id": calendar_id, "summary": body["summary"]}
-            calendar = self.calendars.get(parts[1]) if len(parts) > 1 and parts[0] == "calendars" else None
+                case "POST", ["channels", "stop"]:
+                    return 204, None
+            calendar_id = parts[1] if len(parts) > 1 and parts[0] == "calendars" else ""
+            # An account's own calendar is its primary.
+            if calendar_id == "primary":
+                calendar_id = email
+            calendar = self.calendars.get(calendar_id)
             if calendar is None or calendar.owner != email:
                 return 404, {"error": {"code": 404, "message": "Not Found"}}
             if calendar.access_role not in ("owner", "writer"):
                 return 403, {"error": {"code": 403, "message": "Forbidden"}}
+            updates = query.get("sendUpdates", "")
             match method, parts[2:]:
+                case "GET", ["events"]:
+                    return self._list(calendar, query)
+                case "POST", ["events", "watch"]:
+                    self.watches.append(body)
+                    expiration = (int(time.time()) + 7 * 86400) * 1000
+                    return 200, {"id": body["id"], "resourceId": "res-" + calendar.id, "expiration": str(expiration)}
                 case "POST", ["events"]:
                     event_id = secrets.token_hex(10)
                     calendar.events[event_id] = {**body, "id": event_id}
+                    self.writes.append(("POST", calendar.id, event_id, updates))
+                    self._touch(calendar, event_id)
                     return 200, calendar.events[event_id]
                 case "PUT", ["events", event_id] if event_id in calendar.events:
                     calendar.events[event_id] = {**body, "id": event_id}
+                    self.writes.append(("PUT", calendar.id, event_id, updates))
+                    self._touch(calendar, event_id)
                     return 200, calendar.events[event_id]
                 case "DELETE", ["events", event_id] if event_id in calendar.events:
-                    del calendar.events[event_id]
+                    event = calendar.events.pop(event_id)
+                    calendar.cancelled[event_id] = {**event, "status": "cancelled"}
+                    self.writes.append(("DELETE", calendar.id, event_id, updates))
+                    self._touch(calendar, event_id)
                     return 204, None
                 case ("PUT" | "DELETE"), ["events", _]:
                     return 410, {"error": {"code": 410, "message": "Resource has been deleted"}}
         return 404, {"error": {"code": 404, "message": "Not Found"}}
+
+    def _list(self, calendar: Calendar, query: dict[str, str]) -> tuple[int, Any]:
+        """events.list, in one page: every event, or with a sync token those
+        changed since, deleted ones as cancelled."""
+        token = query.get("syncToken")
+        if token is None:
+            items = list(calendar.events.values())
+        elif not token.isdigit() or int(token) > self.seq:
+            return 410, {"error": {"code": 410, "message": "Sync token is no longer valid"}}
+        else:
+            since = int(token)
+            items = [
+                calendar.events.get(e) or calendar.cancelled[e]
+                for e, seq in calendar.changed.items()
+                if seq > since and (e in calendar.events or e in calendar.cancelled)
+            ]
+        return 200, {"items": [json.loads(json.dumps(i)) for i in items], "nextSyncToken": str(self.seq)}
 
 
 class Handler(BaseHTTPRequestHandler):

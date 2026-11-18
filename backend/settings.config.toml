@@ -10,4 +10,4 @@ authorized_parties = []
 # Google Calendar sync: the OAuth client's id ("....apps.googleusercontent.com"),
 # from the Google Cloud console. Empty turns the sync off. Its setup is in
 # google_calendar.py's doc.
-google_client_id = ""
+google_client_id = "803595330200-36ruolt9og7966rss08qkhsupu1s45f7.apps.googleusercontent.com"

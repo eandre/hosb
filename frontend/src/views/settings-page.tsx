@@ -1,5 +1,5 @@
-import { CalendarSync, RefreshCw, TriangleAlert } from "lucide-react"
-import { useEffect, useState, type FormEvent } from "react"
+import { CalendarSync, MailCheck, RefreshCw, TriangleAlert } from "lucide-react"
+import { useState, type FormEvent } from "react"
 import { toast } from "sonner"
 import {
   AlertDialog,
@@ -21,41 +21,91 @@ import {
   useDisconnectGoogle,
   useGoogleCalendars,
   useGoogleStatus,
+  useInvitations,
+  useSetInvitations,
   useSaveGoogleSettings,
   useSyncGoogle,
   type GoogleStatus,
 } from "@/lib/api"
 import { ago } from "@/lib/dates"
-
-// How connecting went, as Google's sign-in sends the member back: ?google=.
-const RESULTS: Record<string, { ok: boolean; message: string }> = {
-  connected: { ok: true, message: "Google Calendar connected" },
-  denied: { ok: false, message: "Google Calendar wasn't connected: access wasn't given." },
-  scopes: {
-    ok: false,
-    message: "Syncing needs access to your calendars. Connect again, and leave the calendar boxes ticked.",
-  },
-  failed: { ok: false, message: "Connecting to Google failed. Try again." },
-}
+import { useGoogleResult } from "@/lib/google-result"
 
 // The calendar option that makes a calendar of its own for the events.
 const NEW_CALENDAR = "new"
 
 export function SettingsPage() {
-  useEffect(() => {
-    const result = RESULTS[new URLSearchParams(window.location.search).get("google") ?? ""]
-    if (!result) return
-    // One toast however often this runs; the address loses the ?google=.
-    if (result.ok) toast.success(result.message, { id: "google" })
-    else toast.error(result.message, { id: "google" })
-    window.history.replaceState(null, "", "/settings")
-  }, [])
-
+  useGoogleResult("/settings")
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <h1 className="text-3xl leading-tight">Settings</h1>
+      <InvitationsSection />
       <GoogleCalendarSection />
     </div>
+  )
+}
+
+/** Every event as an invitation in the member's calendar, answered there. */
+function InvitationsSection() {
+  const { data: status, isPending, error } = useInvitations()
+  const google = useGoogleStatus().data
+  const set = useSetInvitations()
+
+  function toggle(enabled: boolean) {
+    set.mutate(enabled, {
+      onSuccess: () =>
+        toast.success(enabled ? "Invitations are on their way" : "No more invitations: the ones sent are cancelled"),
+      onError: (err) => toast.error(err.message),
+    })
+  }
+
+  return (
+    <section className="rounded-2xl border border-border/70 bg-card/60 p-4 sm:p-5">
+      <div className="mb-4 flex items-start gap-3">
+        <MailCheck className="mt-1 size-5 shrink-0 text-candle" />
+        <div>
+          <h2 className="text-lg">Calendar invitations</h2>
+          <p className="text-sm text-muted-foreground">
+            Get every event as an invitation in your calendar. Answer yes, maybe or no there, and it&apos;s your
+            RSVP here.
+          </p>
+        </div>
+      </div>
+      {error ? (
+        <p className="text-sm text-destructive">{error.message}</p>
+      ) : isPending ? (
+        <Skeleton className="h-16 w-full rounded-xl" />
+      ) : !status.available && !status.enabled ? (
+        <p className="text-sm text-muted-foreground">Invitations aren&apos;t set up here yet.</p>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            {status.enabled ? "They go to " : "They'd go to "}
+            <span className="text-foreground">{status.email}</span>
+            {status.organizerEmail && (
+              <>
+                , from <span className="text-foreground">{status.organizerEmail}</span>
+              </>
+            )}
+            .
+          </p>
+          {status.enabled && !status.available && (
+            <p className="text-sm text-ember">The house&apos;s calendar isn&apos;t connected right now, so none are sent.</p>
+          )}
+          {status.enabled && google?.connected && google.mode === "all" && (
+            <p className="text-sm text-muted-foreground">
+              Your Google Calendar below gets every event too, so you&apos;ll see them twice there.
+            </p>
+          )}
+          <Button
+            variant={status.enabled ? "ghost" : "default"}
+            disabled={set.isPending}
+            onClick={() => toggle(!status.enabled)}
+          >
+            {set.isPending ? "Saving…" : status.enabled ? "Stop sending me invitations" : "Send me invitations"}
+          </Button>
+        </div>
+      )}
+    </section>
   )
 }
 

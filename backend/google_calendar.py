@@ -45,7 +45,9 @@ import hashlib
 import json
 import logging
 import secrets as pysecrets
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from collections.abc import Awaitable, Callable
 from typing import Any, Literal
 from urllib.parse import quote, urlencode, urlsplit
 
@@ -61,6 +63,7 @@ from pydantic import Field, model_validator
 
 from calendar_changes import CalendarChange, calendar_changes, notify
 from db import db
+from auth import User
 from events import DEFAULT_DURATION, DEFAULT_DURATION_SQL, Member, Model
 from settings import settings
 
@@ -228,13 +231,29 @@ def id_token_email(id_token: str | None) -> str:
 # --- Google, as the member ---------------------------------------------------
 
 
-class Google:
-    """The Calendar API, as a member whose connection (a google_connections
-    row) this is. Refreshes its access token when it must."""
+SaveToken = Callable[[str, datetime], Awaitable[None]]
 
-    def __init__(self, connection: dict[str, Any]) -> None:
+
+class Google:
+    """The Calendar API, as the account whose connection this is: a member's
+    (a google_connections row), or the house's (google_organizer, with its
+    own save_token). Refreshes its access token when it must."""
+
+    def __init__(self, connection: dict[str, Any], save_token: SaveToken | None = None) -> None:
         self.connection = dict(connection)
-        self.user_id: str = connection["user_id"]
+        self.user_id: str | None = connection.get("user_id")
+        self._save_token = save_token or self._save_member_token
+
+    async def _save_member_token(self, sealed: str, expires: datetime) -> None:
+        await db.exec(
+            """
+            UPDATE google_connections SET access_token = $2, access_expires_at = $3
+            WHERE user_id = $1
+            """,
+            self.user_id,
+            sealed,
+            expires,
+        )
 
     async def access_token(self, *, fresh: bool = False) -> str:
         c = self.connection
@@ -249,15 +268,7 @@ class Google:
         c["access_expires_at"] = datetime.now(UTC) + timedelta(
             seconds=int(tokens.get("expires_in", 3600))
         )
-        await db.exec(
-            """
-            UPDATE google_connections SET access_token = $2, access_expires_at = $3
-            WHERE user_id = $1
-            """,
-            self.user_id,
-            c["access_token"],
-            c["access_expires_at"],
-        )
+        await self._save_token(c["access_token"], c["access_expires_at"])
         return token
 
     async def call(
@@ -656,19 +667,27 @@ class ConnectOut(Model):
     url: str
 
 
-@router.post("/google/connect")
-async def connect(body: ConnectIn, user: Member) -> ConnectOut:
+Purpose = Literal["member", "organizer"]
+
+
+async def sign_in_url(user: User, origin: str, purpose: Purpose) -> ConnectOut:
+    """Where to send the user to sign in to Google: for their own calendar, or,
+    an admin, the house's account (google_invitations.py)."""
     require_setup()
-    origin = check_origin(body.origin)
+    origin = check_origin(origin)
     state = pysecrets.token_urlsafe(32)
     await db.exec(
         "DELETE FROM google_oauth_states WHERE created_at < now() - interval '1 day'"
     )
     await db.exec(
-        "INSERT INTO google_oauth_states (state, user_id, return_origin) VALUES ($1, $2, $3)",
+        """
+        INSERT INTO google_oauth_states (state, user_id, return_origin, purpose)
+        VALUES ($1, $2, $3, $4)
+        """,
         state,
         user.id,
         origin,
+        purpose,
     )
     params = {
         "client_id": settings.value.google_client_id,
@@ -682,21 +701,50 @@ async def connect(body: ConnectIn, user: Member) -> ConnectOut:
         "include_granted_scopes": "true",
         "state": state,
     }
-    if user.email:
+    # The member's own account; the house's is whichever the admin picks.
+    if user.email and purpose == "member":
         params["login_hint"] = user.email
     return ConnectOut(url=f"{settings.value.google_auth_url}?{urlencode(params)}")
+
+
+@router.post("/google/connect")
+async def connect(body: ConnectIn, user: Member) -> ConnectOut:
+    return await sign_in_url(user, body.origin, "member")
+
+
+@dataclass
+class Connected:
+    """A sign-in to Google that went through: whose, which account, and its
+    tokens."""
+
+    user_id: str
+    origin: str
+    email: str
+    refresh_token: str
+    access_token: str
+    expires: datetime
+
+
+# What a purpose's sign-in does once it has gone through, and which page of
+# the app the user goes back to: google_invitations.py adds the organizer's.
+ON_CONNECTED: dict[str, Callable[[Connected], Awaitable[None]]] = {}
+RETURN_PAGE: dict[str, str] = {"member": "/settings", "organizer": "/admin"}
 
 
 @router.get("/google/callback")
 async def callback(
     state: str = "", code: str = "", error: str = "", scope: str = ""
 ) -> RedirectResponse:
-    """Google sends the member back here, with a code to exchange for their
-    tokens, and back they go to the settings page, which reads ?google= for
-    how it went: connected, denied, scopes (calendar access left out) or
+    """Google sends the user back here, with a code to exchange for their
+    tokens, and back they go to the page they connected from (the settings
+    page, or the admin page for the house's account), which reads ?google=
+    for how it went: connected, denied, scopes (calendar access left out) or
     failed."""
     row = await db.query(
-        "DELETE FROM google_oauth_states WHERE state = $1 RETURNING user_id, return_origin, created_at",
+        """
+        DELETE FROM google_oauth_states WHERE state = $1
+        RETURNING user_id, return_origin, created_at, purpose
+        """,
         state,
     ).first()
     if row is None or row["created_at"] < datetime.now(UTC) - STATE_LIFETIME:
@@ -704,10 +752,11 @@ async def callback(
             status_code=400,
             detail="This sign-in to Google has expired or was already used: connect again from the settings page.",
         )
-    origin, user_id = row["return_origin"], row["user_id"]
+    origin, user_id, purpose = row["return_origin"], row["user_id"], row["purpose"]
 
     def back(result: str) -> RedirectResponse:
-        return RedirectResponse(f"{origin}/settings?google={result}", status_code=303)
+        page = RETURN_PAGE.get(purpose, "/settings")
+        return RedirectResponse(f"{origin}{page}?google={result}", status_code=303)
 
     if error or not code:
         return back("denied" if error == "access_denied" else "failed")
@@ -726,8 +775,21 @@ async def callback(
     if not refresh_token or not tokens.get("access_token"):
         return back("failed")
 
-    email = id_token_email(tokens.get("id_token"))
-    expires = datetime.now(UTC) + timedelta(seconds=int(tokens.get("expires_in", 3600)))
+    connected_ = Connected(
+        user_id=user_id,
+        origin=origin,
+        email=id_token_email(tokens.get("id_token")),
+        refresh_token=refresh_token,
+        access_token=tokens["access_token"],
+        expires=datetime.now(UTC) + timedelta(seconds=int(tokens.get("expires_in", 3600))),
+    )
+    await ON_CONNECTED[purpose](connected_)
+    return back("connected")
+
+
+async def member_connected(c: Connected) -> None:
+    """A member's own calendar, connected or reconnected."""
+    user_id, email, origin = c.user_id, c.email, c.origin
     async with db.begin() as tx:
         await lock_member(tx, user_id)
         # Another Google account: what was synced is in the old one, out of reach.
@@ -759,16 +821,18 @@ async def callback(
             """,
             user_id,
             email,
-            seal(refresh_token),
-            seal(tokens["access_token"]),
-            expires,
+            seal(c.refresh_token),
+            seal(c.access_token),
+            c.expires,
             origin,
         ).one()
     logger.info("connected google calendar", extra={"user": user_id})
     if saved["calendar_id"] is not None:
         # Reconnected to the same calendar: catch up on what was missed.
         await notify(user_id=user_id)
-    return back("connected")
+
+
+ON_CONNECTED["member"] = member_connected
 
 
 class CalendarOption(Model):

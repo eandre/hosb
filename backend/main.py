@@ -1,10 +1,10 @@
 """House of Soft Beasts community calendar.
 
-The JSON API, under /api (see events.py, admin.py, share.py and
-google_calendar.py), which the api gateway exposes. The frontend is the `web`
-service in ../frontend, served from an origin of its own, which calls it
-there. Routes for Encore alone, such as a cron job's, are under /internal,
-which the gateway doesn't expose.
+The JSON API, under /api (see events.py, admin.py, share.py,
+google_calendar.py and google_invitations.py), which the api gateway exposes.
+The frontend is the `web` service in ../frontend, served from an origin of its
+own, which calls it there. Routes for Encore alone, such as a cron job's, are
+under /internal, which the gateway doesn't expose.
 
 GET /api/health   liveness, no sign-in needed
 GET /api/config   what the frontend needs to start: the Clerk publishable key
@@ -21,6 +21,7 @@ from pydantic.alias_generators import to_camel
 import admin
 import events
 import google_calendar
+import google_invitations
 import share
 from settings import settings
 
@@ -54,6 +55,8 @@ app.include_router(admin.router)
 app.include_router(share.router)
 app.include_router(google_calendar.router)
 app.include_router(google_calendar.internal)
+app.include_router(google_invitations.router)
+app.include_router(google_invitations.internal)
 
 
 @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])

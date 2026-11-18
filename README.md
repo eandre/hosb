@@ -99,6 +99,25 @@ To set it up for an environment:
 
 Until `google_client_id` is set, the settings page says the sync isn't set up.
 
+### Calendar invitations
+
+A member can instead ask for every event as an invitation (settings page,
+"Calendar invitations"), sent to their account's address: they answer it yes,
+maybe or no in their calendar, whichever it is, and that's their RSVP here; an
+RSVP made here is their answer there. Google shows an event's yes/maybe/no
+only to guests of someone else's event, so the invitations come from a Google
+account of the house's own, such as `calendar@hosb.se`: each event is one
+event in its calendar, with the members who asked as guests (who can't see
+each other). Answers reach the app as Google tells it of them, or within ten
+minutes, when a cron job reads them; a yes to an event that's full is set
+back. How it works is in `backend/google_invitations.py`.
+
+To set it up, with the OAuth client above: an admin opens the admin page's
+Invitations tab and connects the house's account. Its consent screen needs the
+same scopes. Google tells the app of answers only at an HTTPS address, the
+`api` gateway's `/api/google/notifications`, so locally the cron job (`encore
+cron trigger google-invitations`) and "Sync now" read them.
+
 ## Develop
 
 ```sh
@@ -164,6 +183,13 @@ that and depend on `encore-dev` from PyPI.
 | `PUT /api/google/settings` | member | `{"mode": "rsvp" \| "all", "calendarId": "..."}` or `{"mode": ..., "newCalendar": true}`, then a sync |
 | `POST /api/google/sync` | member | sync the member's calendar now |
 | `DELETE /api/google` | member | disconnect, taking the events out of the calendar |
+| `GET /api/invitations` | member | whether the member gets invitations, and where |
+| `PUT /api/invitations` | member | `{"enabled": true}` for every event as an invitation, or `false` |
+| `GET /api/admin/google-organizer` | admin | the house's Google account, which sends the invitations |
+| `POST /api/admin/google-organizer/connect` | admin | start connecting it, `{"origin": "https://..."}` |
+| `POST /api/admin/google-organizer/sync` | admin | read the answers and send the invitations now |
+| `DELETE /api/admin/google-organizer` | admin | disconnect it, cancelling the invitations |
+| `POST /api/google/notifications` | Google | a change in the house's calendar, on its push channel |
 
 An event can have a number of places, which members going, their guests, and
 guests signed up through shareable links fill; an RSVP or sign-up that would

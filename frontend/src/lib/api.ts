@@ -159,6 +159,30 @@ export type GoogleSettings =
   | { mode: GoogleStatus["mode"]; calendarId: string }
   | { mode: GoogleStatus["mode"]; newCalendar: true }
 
+/** The member's calendar invitations (backend/google_invitations.py). */
+export interface InvitationStatus {
+  /** Whether the house's Google account is connected to send them. */
+  available: boolean
+  enabled: boolean
+  /** Where theirs go: their account's address. */
+  email: string
+  organizerEmail: string
+}
+
+/** The house's Google account, which sends the invitations: for admins. */
+export interface OrganizerStatus {
+  available: boolean
+  connected: boolean
+  googleEmail: string
+  needsReconnect: boolean
+  lastError: string
+  lastSyncedAt: string | null
+  /** Whether Google tells of answers as they're given. */
+  push: boolean
+  subscribers: number
+  events: number
+}
+
 export const MAX_GUESTS = 4
 
 export class ApiError extends Error {
@@ -221,6 +245,8 @@ export const keys = {
   adminMembers: ["admin", "members"] as const,
   google: ["google"] as const,
   googleCalendars: ["google", "calendars"] as const,
+  invitations: ["invitations"] as const,
+  organizer: ["admin", "organizer"] as const,
 }
 
 export function useMe() {
@@ -499,4 +525,57 @@ export function useSyncGoogle() {
 export function useDisconnectGoogle() {
   const api = useApi()
   return useGoogleMutation(() => api<undefined>("/api/google", { method: "DELETE" }))
+}
+
+export function useInvitations() {
+  const api = useApi()
+  return useQuery({ queryKey: keys.invitations, queryFn: () => api<InvitationStatus>("/api/invitations") })
+}
+
+/** Every event as an invitation, or none. */
+export function useSetInvitations() {
+  const api = useApi()
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (enabled: boolean) =>
+      api<InvitationStatus>("/api/invitations", { method: "PUT", body: JSON.stringify({ enabled }) }),
+    onSuccess: (status) => client.setQueryData(keys.invitations, status),
+  })
+}
+
+export function useOrganizer() {
+  const api = useApi()
+  return useQuery({ queryKey: keys.organizer, queryFn: () => api<OrganizerStatus>("/api/admin/google-organizer") })
+}
+
+/** Starts connecting the house's account: off to Google's sign-in, which
+ * sends the admin back to /admin. */
+export function useConnectOrganizer() {
+  const api = useApi()
+  return useMutation({
+    mutationFn: () =>
+      api<{ url: string }>("/api/admin/google-organizer/connect", {
+        method: "POST",
+        body: JSON.stringify({ origin: window.location.origin }),
+      }),
+    onSuccess: ({ url }) => window.location.assign(url),
+  })
+}
+
+export function useSyncOrganizer() {
+  const api = useApi()
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: () => api<OrganizerStatus>("/api/admin/google-organizer/sync", { method: "POST" }),
+    onSuccess: (status) => client.setQueryData(keys.organizer, status),
+  })
+}
+
+export function useDisconnectOrganizer() {
+  const api = useApi()
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: () => api<undefined>("/api/admin/google-organizer", { method: "DELETE" }),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.organizer }),
+  })
 }

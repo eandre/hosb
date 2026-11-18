@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 import time
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -20,6 +20,8 @@ import jwt
 import pytest
 from encore.services import httpx as services
 from encore.storage import postgres
+
+from fake_google import FakeGoogle, serve
 
 TEST_KEY = (Path(__file__).parent / "clerk_test_key.pem").read_text()
 
@@ -127,3 +129,13 @@ def ada(sign_in: Callable[..., Member]) -> Member:
 @pytest.fixture
 def grace(sign_in: Callable[..., Member]) -> Member:
     return sign_in("user_grace", "Grace Hopper")
+
+
+@pytest.fixture(scope="session")
+def fake() -> Iterator[FakeGoogle]:
+    """The fake Google (fake_google.py), on the port the test config gives the
+    backend: one for the session, as the port is."""
+    google = FakeGoogle()
+    server = serve(google)
+    yield google
+    server.shutdown()

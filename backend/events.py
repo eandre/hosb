@@ -381,9 +381,15 @@ async def delete_event(event_id: int, user: Admin) -> Response:
     return Response(status_code=204)
 
 
-@router.put("/events/{event_id}/rsvp")
-async def rsvp(event_id: int, body: RSVPIn, user: Member) -> EventDetail:
-    guests = body.guests if body.status == "going" else 0
+async def save_rsvp(event_id: int, user_id: str, status: RSVPStatus, guests: int) -> None:
+    """Record the member's RSVP, as they gave it in the app or answered an
+    invitation in their calendar, and publish the change.
+
+    Raises:
+        HTTPException: 404 if there is no such event, 409 if it is over, or
+            full for the member and their guests going.
+    """
+    guests = guests if status == "going" else 0
     async with db.begin() as tx:
         # Lock the event so that concurrent RSVPs can't overfill it.
         event = await tx.query(
@@ -395,7 +401,7 @@ async def rsvp(event_id: int, body: RSVPIn, user: Member) -> EventDetail:
         ends = event["ends_at"] or event["starts_at"] + DEFAULT_DURATION
         if ends < datetime.now(UTC):
             raise HTTPException(status_code=409, detail="the event is over")
-        if body.status == "going" and event["capacity"] is not None:
+        if status == "going" and event["capacity"] is not None:
             taken = await tx.query(
                 """
                 SELECT (
@@ -405,7 +411,7 @@ async def rsvp(event_id: int, body: RSVPIn, user: Member) -> EventDetail:
                 )::int AS n
                 """,
                 event_id,
-                user.id,
+                user_id,
             ).one()
             if taken["n"] + 1 + guests > event["capacity"]:
                 left = max(event["capacity"] - taken["n"], 0)
@@ -421,11 +427,16 @@ async def rsvp(event_id: int, body: RSVPIn, user: Member) -> EventDetail:
                 SET status = EXCLUDED.status, guests = EXCLUDED.guests, updated_at = now()
             """,
             event_id,
-            user.id,
-            body.status,
+            user_id,
+            status,
             guests,
         )
-    await notify(user_id=user.id, event_id=event_id)
+    await notify(user_id=user_id, event_id=event_id)
+
+
+@router.put("/events/{event_id}/rsvp")
+async def rsvp(event_id: int, body: RSVPIn, user: Member) -> EventDetail:
+    await save_rsvp(event_id, user.id, body.status, body.guests)
     return await load_event(event_id, user.id)
 
 
