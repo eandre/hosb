@@ -84,9 +84,9 @@ export function PrivacyPage() {
         <li>Other members see the names and pictures of the people going to an event, and the names of guests.</li>
         <li>The house&apos;s admins see members&apos; email addresses and the guest list for each event.</li>
         <li>
-          Companies that run parts of the calendar for us handle the information only to do that: Clerk (sign-in),
-          Encore (hosting) and Google (only if you use the Google Calendar features). Some of them may handle it
-          outside the EU, with the safeguards the law requires.
+          Companies that run parts of the calendar for us handle the information only to do that: Encore (hosting),
+          Clerk (sign-in) and Google (only if you use the Google Calendar features). The calendar is hosted in the
+          EU. Clerk and Google may handle some of it outside the EU, with the safeguards the law requires.
         </li>
       </ul>
       <p>We do not sell your information or use it for advertising.</p>
