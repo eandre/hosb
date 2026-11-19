@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react"
 import { Toaster } from "@/components/ui/sonner"
 import { Candle } from "@/components/candle"
 import { ErrorBoundary } from "@/components/error-boundary"
+import { SiteFooter } from "@/components/site-footer"
 import { SiteHeader } from "@/components/site-header"
 import { ApiError } from "@/lib/api"
 import { Landing } from "@/views/landing"
@@ -72,9 +73,7 @@ export function AppShell({ publishableKey, children }: { publishableKey: string;
                 <Show when="signed-in">{children}</Show>
               </ClerkLoaded>
             </main>
-            <footer className="mx-auto hidden w-full max-w-5xl px-6 py-8 text-xs text-muted-foreground md:block">
-              House of Soft Beasts · Patentgatan 2, Stockholm
-            </footer>
+            <SiteFooter className="hidden md:block" />
           </div>
           <Toaster theme="dark" position="top-center" />
         </QueryClientProvider>

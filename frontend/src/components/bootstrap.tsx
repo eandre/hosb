@@ -11,7 +11,9 @@ type State = { status: "loading" } | { status: "ready"; key: string } | { status
 /** Starts the app once the API has said which Clerk instance to sign in
  * with: the key is the environment's, so one build serves every one. */
 export function Bootstrap({ children }: { children: ReactNode }) {
-  const guest = useLocation().pathname.startsWith("/s/")
+  const path = useLocation().pathname
+  // Pages for anyone, signed in or not: a shareable link's, and the legal ones.
+  const guest = path.startsWith("/s/") || path.startsWith("/legal/")
   const [state, setState] = useState<State>({ status: "loading" })
 
   useEffect(() => {
@@ -23,7 +25,6 @@ export function Bootstrap({ children }: { children: ReactNode }) {
       )
   }, [guest])
 
-  // A shareable link's page: for anyone, without signing in.
   if (guest) return <GuestShell>{children}</GuestShell>
 
   switch (state.status) {

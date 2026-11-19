@@ -1,6 +1,7 @@
 import { SignInButton } from "@clerk/react"
 import { Button } from "@/components/ui/button"
 import { Candle } from "@/components/candle"
+import { LegalLinks } from "@/components/site-footer"
 
 export function Landing() {
   return (
@@ -17,6 +18,9 @@ export function Landing() {
           Sign in
         </Button>
       </SignInButton>
+      <p className="mt-10 text-xs text-muted-foreground">
+        <LegalLinks />
+      </p>
     </section>
   )
 }

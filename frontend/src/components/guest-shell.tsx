@@ -2,10 +2,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { useState, type ReactNode } from "react"
 import { Toaster } from "@/components/ui/sonner"
 import { Candle } from "@/components/candle"
+import { SiteFooter } from "@/components/site-footer"
 
-/** Around a page a guest with a shareable link sees: no sign-in, and no way
- * on to the rest of the calendar. It needs neither Clerk nor the app's
- * config, so a guest's page works whatever they do. */
+/** Around a page anyone sees without signing in: a shareable link's event,
+ * with no way on to the rest of the calendar, and the legal pages. It needs
+ * neither Clerk nor the app's config, so these pages work whatever they do. */
 export function GuestShell({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => new QueryClient())
   return (
@@ -18,9 +19,7 @@ export function GuestShell({ children }: { children: ReactNode }) {
           </div>
         </header>
         <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-16 pt-6 sm:px-6">{children}</main>
-        <footer className="mx-auto w-full max-w-5xl px-6 py-8 text-xs text-muted-foreground">
-          House of Soft Beasts · Patentgatan 2, Stockholm
-        </footer>
+        <SiteFooter />
       </div>
       <Toaster theme="dark" position="top-center" />
     </QueryClientProvider>
