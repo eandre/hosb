@@ -5,12 +5,14 @@ Google shows an event's guests its yes/maybe/no only when someone else
 organizes it, so the invitations come from the house's own Google account,
 which an admin connects on the admin page (the organizer). Each house event
 is one event in its calendar, with every member who asked for invitations
-as a guest, at their account's address: they need no Google account
-themselves, as Google emails the invitation to any address.
+as a guest, at the address they gave (their account's, unless they gave
+another): they need no Google account themselves, as Google emails the
+invitation to any address.
 
 GET    /api/invitations                         the member's invitations, and whether
                                                 there are any to be had
-PUT    /api/invitations                         {"enabled": true|false}
+PUT    /api/invitations                         {"enabled": true|false, "email": "..."}: the
+                                                address defaults to the account's
 GET    /api/admin/google-organizer              the house's account (admin)
 POST   /api/admin/google-organizer/connect      {"origin": "https://..."}: where to sign
                                                 in to Google as the house (admin)
@@ -52,11 +54,12 @@ from urllib.parse import quote
 from encore import gateways, pubsub
 from encore.cron import Job
 from fastapi import APIRouter, HTTPException, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 from calendar_changes import LOCAL_HANDLERS, CalendarChange, calendar_changes, run_soon
 from db import db
 from events import DEFAULT_DURATION_SQL, Admin, Member, Model, RSVPStatus, save_rsvp
+from share import EMAIL
 from google_calendar import (
     ON_CONNECTED,
     Connected,
@@ -583,9 +586,25 @@ class InvitationStatus(Model):
 
 class InvitationsIn(Model):
     enabled: bool
+    # Where to send them: any address the member gives, their account's if
+    # they give none. Kept here, not on their account, and not verified: the
+    # house's members are its own.
+    email: str | None = Field(default=None, max_length=254)
+
+    @field_validator("email")
+    @classmethod
+    def _email(cls, email: str | None) -> str | None:
+        if email is None or not email.strip():
+            return None
+        email = email.strip().lower()
+        if not EMAIL.match(email):
+            raise ValueError("give a valid email address")
+        return email
 
 
 async def invitation_status(user_id: str, email: str) -> InvitationStatus:
+    """The member's invitations. The address is the one they get them at,
+    else their account's, as the settings page fills its field in with."""
     org = await db.query("SELECT google_email, status FROM google_organizer").first()
     mine = await db.query(
         "SELECT email FROM invitation_subscribers WHERE user_id = $1", user_id
@@ -605,28 +624,29 @@ async def my_invitations(user: Member) -> InvitationStatus:
 
 @router.put("/invitations")
 async def set_invitations(body: InvitationsIn, user: Member) -> InvitationStatus:
-    """Every event as an invitation, or none: sent, or cancelled, by the sync
-    that follows."""
+    """Every event as an invitation, at the address given (else the account's),
+    or none: sent, moved or cancelled by the sync that follows."""
     if body.enabled:
         status = await invitation_status(user.id, user.email)
         if not status.available:
             raise HTTPException(status_code=409, detail="invitations aren't set up yet")
-        if not user.email:
-            raise HTTPException(status_code=422, detail="your account has no email address")
+        address = body.email or user.email.strip().lower()
+        if not address or not EMAIL.match(address):
+            raise HTTPException(status_code=422, detail="email: give the address to send invitations to")
         taken = await db.query(
             "SELECT user_id FROM invitation_subscribers WHERE email = $1 AND user_id <> $2",
-            user.email.lower(),
+            address,
             user.id,
         ).first()
         if taken is not None:
-            raise HTTPException(status_code=409, detail="another member gets invitations at your address")
+            raise HTTPException(status_code=409, detail="another member gets invitations at that address")
         await db.exec(
             """
             INSERT INTO invitation_subscribers (user_id, email) VALUES ($1, $2)
             ON CONFLICT (user_id) DO UPDATE SET email = EXCLUDED.email
             """,
             user.id,
-            user.email.lower(),
+            address,
         )
     else:
         await db.exec("DELETE FROM invitation_subscribers WHERE user_id = $1", user.id)

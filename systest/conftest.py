@@ -100,11 +100,14 @@ async def anonymous() -> AsyncIterator[httpx.AsyncClient]:
 
 @pytest.fixture
 async def sign_in() -> AsyncIterator[Callable[..., Member]]:
-    """Signs a member in: sign_in("user_ada", "Ada", admin=True)."""
+    """Signs a member in: sign_in("user_ada", "Ada", admin=True). Their
+    account's address is <user_id>@example.test, unless email says another
+    ("" for none)."""
     clients: list[httpx.AsyncClient] = []
 
-    def sign_in(user_id: str, name: str, *, admin: bool = False) -> Member:
-        token = session_token(user_id, name=name, email=f"{user_id}@example.test", admin=admin)
+    def sign_in(user_id: str, name: str, *, admin: bool = False, email: str | None = None) -> Member:
+        address = f"{user_id}@example.test" if email is None else email
+        token = session_token(user_id, name=name, email=address, admin=admin)
         client = services.client(
             "community", headers={"Authorization": f"Bearer {token}"}, timeout=60
         )

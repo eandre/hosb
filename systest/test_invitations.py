@@ -198,6 +198,42 @@ async def test_leaving_and_deleting_cancel_invitations(
     assert (status["available"], status["enabled"]) == (False, True)
 
 
+async def test_members_choose_where_invitations_go(
+    google: FakeGoogle, admin: Member, ada: Member, sign_in, anonymous: httpx.AsyncClient
+):
+    await create_event(admin, "House Dinner")
+    await connect_house(admin, anonymous, google)
+
+    # An account without an address: the field starts empty, and they give one.
+    noemail = sign_in("user_noemail", "No Email", email="")
+    status = expect(await noemail.client.get("/api/invitations"), 200)
+    assert (status["enabled"], status["email"]) == (False, "")
+    assert (await noemail.client.put("/api/invitations", json={"enabled": True})).status_code == 422
+    bad = {"enabled": True, "email": "not-an-address"}
+    assert (await noemail.client.put("/api/invitations", json=bad)).status_code == 422
+    given = {"enabled": True, "email": "  Someone@Example.TEST "}
+    assert expect(await noemail.client.put("/api/invitations", json=given), 200)["email"] == "someone@example.test"
+
+    # An account with one: it's filled in, and kept unless they change it.
+    assert expect(await ada.client.get("/api/invitations"), 200)["email"] == ADA
+    expect(await ada.client.put("/api/invitations", json={"enabled": True}), 200)
+    await eventually(
+        lambda: google.answers(HOUSE, "House Dinner") == {ADA: "needsAction", "someone@example.test": "needsAction"}
+    )
+
+    # One address per member.
+    taken = {"enabled": True, "email": "someone@example.test"}
+    assert (await ada.client.put("/api/invitations", json=taken)).status_code == 409
+
+    # A new address: the old one is taken off the guest list, the new one invited.
+    moved = {"enabled": True, "email": "ada.private@example.test"}
+    assert expect(await ada.client.put("/api/invitations", json=moved), 200)["email"] == "ada.private@example.test"
+    await eventually(
+        lambda: google.answers(HOUSE, "House Dinner")
+        == {"ada.private@example.test": "needsAction", "someone@example.test": "needsAction"}
+    )
+
+
 async def test_only_admins_connect_the_house(google: FakeGoogle, ada: Member):
     assert (await ada.client.get("/api/admin/google-organizer")).status_code == 403
     connect = await ada.client.post("/api/admin/google-organizer/connect", json={"origin": ORIGIN})

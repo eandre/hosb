@@ -13,6 +13,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
@@ -26,10 +27,10 @@ import {
   useSaveGoogleSettings,
   useSyncGoogle,
   type GoogleStatus,
+  type InvitationStatus,
 } from "@/lib/api"
 import { ago } from "@/lib/dates"
 import { useGoogleResult } from "@/lib/google-result"
-import { AddEmail } from "@/components/add-email"
 import { LegalLinks } from "@/components/site-footer"
 
 // The calendar option that makes a calendar of its own for the events.
@@ -52,16 +53,6 @@ export function SettingsPage() {
 /** Every event as an invitation in the member's calendar, answered there. */
 function InvitationsSection() {
   const { data: status, isPending, error } = useInvitations()
-  const google = useGoogleStatus().data
-  const set = useSetInvitations()
-
-  function toggle(enabled: boolean) {
-    set.mutate(enabled, {
-      onSuccess: () =>
-        toast.success(enabled ? "Invitations are on their way" : "No more invitations: the ones sent are cancelled"),
-      onError: (err) => toast.error(err.message),
-    })
-  }
 
   return (
     <section className="rounded-2xl border border-border/70 bg-card/60 p-4 sm:p-5">
@@ -81,13 +72,76 @@ function InvitationsSection() {
         <Skeleton className="h-16 w-full rounded-xl" />
       ) : !status.available && !status.enabled ? (
         <p className="text-sm text-muted-foreground">Invitations aren&apos;t set up here yet.</p>
-      ) : !status.email && !status.enabled ? (
-        <AddEmail onAdded={() => toggle(true)} />
       ) : (
-        <div className="space-y-3">
+        // Starts again from the saved address whenever it changes.
+        <Invitations key={`${status.enabled}:${status.email}`} status={status} />
+      )}
+    </section>
+  )
+}
+
+function Invitations({ status }: { status: InvitationStatus }) {
+  const google = useGoogleStatus().data
+  const set = useSetInvitations()
+  const [email, setEmail] = useState(status.email)
+  const [editing, setEditing] = useState(!status.enabled)
+
+  function save(e: FormEvent) {
+    e.preventDefault()
+    set.mutate(
+      { enabled: true, email: email.trim() },
+      {
+        onSuccess: () => toast.success(status.enabled ? "Invitations go to your new address" : "Invitations are on their way"),
+        onError: (err) => toast.error(err.message),
+      },
+    )
+  }
+
+  function stop() {
+    set.mutate(
+      { enabled: false },
+      {
+        onSuccess: () => toast.success("No more invitations: the ones sent are cancelled"),
+        onError: (err) => toast.error(err.message),
+      },
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      {editing ? (
+        <form onSubmit={save} className="grid gap-3">
+          <div className="grid gap-2 sm:max-w-sm">
+            <Label htmlFor="invitation-email">Send them to</Label>
+            <Input
+              id="invitation-email"
+              type="email"
+              autoComplete="email"
+              required
+              maxLength={254}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+            />
+          </div>
+          {status.organizerEmail && (
+            <p className="text-xs text-muted-foreground">They come from {status.organizerEmail}.</p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" disabled={set.isPending}>
+              {set.isPending ? "Saving…" : status.enabled ? "Save" : "Send me invitations"}
+            </Button>
+            {status.enabled && (
+              <Button type="button" variant="ghost" disabled={set.isPending} onClick={() => setEditing(false)}>
+                Cancel
+              </Button>
+            )}
+          </div>
+        </form>
+      ) : (
+        <>
           <p className="text-sm text-muted-foreground">
-            {status.enabled ? "They go to " : "They'd go to "}
-            <span className="text-foreground">{status.email}</span>
+            They go to <span className="text-foreground">{status.email}</span>
             {status.organizerEmail && (
               <>
                 , from <span className="text-foreground">{status.organizerEmail}</span>
@@ -95,24 +149,25 @@ function InvitationsSection() {
             )}
             .
           </p>
-          {status.enabled && !status.available && (
-            <p className="text-sm text-ember">The house&apos;s calendar isn&apos;t connected right now, so none are sent.</p>
-          )}
-          {status.enabled && google?.connected && google.mode === "all" && (
-            <p className="text-sm text-muted-foreground">
-              Your Google Calendar below gets every event too, so you&apos;ll see them twice there.
-            </p>
-          )}
-          <Button
-            variant={status.enabled ? "ghost" : "default"}
-            disabled={set.isPending}
-            onClick={() => toggle(!status.enabled)}
-          >
-            {set.isPending ? "Saving…" : status.enabled ? "Stop sending me invitations" : "Send me invitations"}
-          </Button>
-        </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" disabled={set.isPending} onClick={() => setEditing(true)}>
+              Change address
+            </Button>
+            <Button variant="ghost" size="sm" disabled={set.isPending} onClick={stop}>
+              {set.isPending ? "Saving…" : "Stop sending me invitations"}
+            </Button>
+          </div>
+        </>
       )}
-    </section>
+      {status.enabled && !status.available && (
+        <p className="text-sm text-ember">The house&apos;s calendar isn&apos;t connected right now, so none are sent.</p>
+      )}
+      {status.enabled && google?.connected && google.mode === "all" && (
+        <p className="text-sm text-muted-foreground">
+          Your Google Calendar below gets every event too, so you&apos;ll see them twice there.
+        </p>
+      )}
+    </div>
   )
 }
 

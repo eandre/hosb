@@ -164,7 +164,8 @@ export interface InvitationStatus {
   /** Whether the house's Google account is connected to send them. */
   available: boolean
   enabled: boolean
-  /** Where theirs go: their account's address. */
+  /** Where theirs go, or would: the address they gave, else their account's
+   * (empty if it has none). */
   email: string
   organizerEmail: string
 }
@@ -528,13 +529,14 @@ export function useInvitations() {
   return useQuery({ queryKey: keys.invitations, queryFn: () => api<InvitationStatus>("/api/invitations") })
 }
 
-/** Every event as an invitation, or none. */
+/** Every event as an invitation, at the address given (else the account's),
+ * or none. */
 export function useSetInvitations() {
   const api = useApi()
   const client = useQueryClient()
   return useMutation({
-    mutationFn: (enabled: boolean) =>
-      api<InvitationStatus>("/api/invitations", { method: "PUT", body: JSON.stringify({ enabled }) }),
+    mutationFn: (input: { enabled: boolean; email?: string }) =>
+      api<InvitationStatus>("/api/invitations", { method: "PUT", body: JSON.stringify(input) }),
     onSuccess: (status) => client.setQueryData(keys.invitations, status),
   })
 }
