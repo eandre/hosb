@@ -54,7 +54,7 @@ from encore.cron import Job
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
 
-from calendar_changes import CalendarChange, calendar_changes
+from calendar_changes import LOCAL_HANDLERS, CalendarChange, calendar_changes, run_soon
 from db import db
 from events import DEFAULT_DURATION_SQL, Admin, Member, Model, RSVPStatus, save_rsvp
 from google_calendar import (
@@ -110,7 +110,10 @@ invitation_syncs = pubsub.Topic[InvitationSync]("invitation-syncs")
 
 
 async def request_sync(reason: str) -> None:
-    """A sync, soon. A failure is logged: the cron job catches up."""
+    """A sync, started here at once and published for the topic's delivery to
+    do again (see calendar_changes.py). A failure is logged: the cron job
+    catches up."""
+    run_soon("invitations sync", sync_invitations())
     try:
         await invitation_syncs.publish(InvitationSync(reason=reason))
     except Exception:
@@ -508,9 +511,13 @@ async def sync_invitations(event_ids: list[int] | None = None) -> None:
 
 
 async def on_calendar_change(message: pubsub.Message[CalendarChange]) -> None:
+    await follow_change(message.data)
+
+
+async def follow_change(change: CalendarChange) -> None:
     """An event changed, or an RSVP to it: its invitation follows."""
-    if message.data.event_id is not None:
-        await sync_invitations([message.data.event_id])
+    if change.event_id is not None:
+        await sync_invitations([change.event_id])
 
 
 async def on_sync(message: pubsub.Message[InvitationSync]) -> None:
@@ -520,6 +527,7 @@ async def on_sync(message: pubsub.Message[InvitationSync]) -> None:
 follow_changes = pubsub.Subscription[CalendarChange](
     calendar_changes, "invitations", handler=on_calendar_change
 )
+LOCAL_HANDLERS.append(follow_change)
 follow_syncs = pubsub.Subscription[InvitationSync](
     invitation_syncs, "invitations", handler=on_sync
 )

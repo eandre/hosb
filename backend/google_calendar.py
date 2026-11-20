@@ -61,7 +61,7 @@ from fastapi import APIRouter, HTTPException, Response
 from fastapi.responses import RedirectResponse
 from pydantic import Field, model_validator
 
-from calendar_changes import CalendarChange, calendar_changes, notify
+from calendar_changes import LOCAL_HANDLERS, CalendarChange, calendar_changes, notify
 from db import db
 from auth import User
 from events import DEFAULT_DURATION, DEFAULT_DURATION_SQL, Member, Model
@@ -525,7 +525,12 @@ WHERE c.status = 'ok' AND c.calendar_id IS NOT NULL
 
 
 async def on_change(message: pubsub.Message[CalendarChange]) -> None:
-    change = message.data
+    await follow_change(message.data)
+
+
+async def follow_change(change: CalendarChange) -> None:
+    """Sync the calendars a change touches: as it is made (LOCAL_HANDLERS),
+    and again when the topic delivers it."""
     if change.user_id is not None:
         await sync_member(change.user_id, None if change.event_id is None else [change.event_id])
         return
@@ -551,6 +556,7 @@ async def on_change(message: pubsub.Message[CalendarChange]) -> None:
 sync_changes = pubsub.Subscription[CalendarChange](
     calendar_changes, "google-calendar-sync", handler=on_change
 )
+LOCAL_HANDLERS.append(follow_change)
 
 sync_everyone_job = Job(
     "google-calendar-sync",
