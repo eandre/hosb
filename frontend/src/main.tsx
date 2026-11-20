@@ -5,6 +5,7 @@ import "./index.css"
 import { Bootstrap } from "@/components/bootstrap"
 import { AdminPage } from "@/views/admin-page"
 import { EventPage } from "@/views/event-page"
+import { viewPaths } from "@/lib/views"
 import { EventsPage } from "@/views/events-page"
 import { PrivacyPage, TermsPage } from "@/views/legal-page"
 import { NotFound } from "@/views/not-found"
@@ -16,7 +17,9 @@ createRoot(document.getElementById("root")!).render(
     <BrowserRouter>
       <Bootstrap>
         <Routes>
-          <Route path="/" element={<EventsPage />} />
+          {viewPaths.map((path) => (
+            <Route key={path} path={path} element={<EventsPage />} />
+          ))}
           <Route path="/events/:slug" element={<EventPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/settings" element={<SettingsPage />} />

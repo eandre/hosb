@@ -1,19 +1,20 @@
 import { ChevronLeft, ChevronRight } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useMemo } from "react"
+import { useSearchParams } from "react-router"
 import { Button } from "@/components/ui/button"
 import { EventListSkeleton, EventRow } from "@/components/event-list"
 import { useEventsBetween, type CalendarEvent } from "@/lib/api"
-import { dayKey, formatDay, monthGrid, monthName, weekdayNames } from "@/lib/dates"
+import { dayKey, formatDay, monthGrid, monthName, parseDay, weekdayNames } from "@/lib/dates"
 import { cn } from "@/lib/utils"
 
 /** A month of the calendar: a grid of days with the events on each, and the
- * events of the day picked below it. */
-export function MonthCalendar({ onPickDay }: { onPickDay?: (day: Date) => void }) {
-  const [month, setMonth] = useState(() => {
-    const now = new Date()
-    return new Date(now.getFullYear(), now.getMonth(), 1)
-  })
-  const [picked, setPicked] = useState<Date>(() => new Date())
+ * events of the day picked below it. The day picked is the URL's ?date=, so
+ * that a reload keeps it; without one, today. */
+export function MonthCalendar() {
+  const [params, setParams] = useSearchParams()
+  const pickedKey = dayKey(parseDay(params.get("date")) ?? new Date())
+  const picked = useMemo(() => parseDay(pickedKey)!, [pickedKey])
+  const month = useMemo(() => new Date(picked.getFullYear(), picked.getMonth(), 1), [picked])
   const days = useMemo(() => monthGrid(month), [month])
   const { data: events, isPending, error } = useEventsBetween(
     days[0],
@@ -32,15 +33,12 @@ export function MonthCalendar({ onPickDay }: { onPickDay?: (day: Date) => void }
   const todayKey = dayKey(new Date())
   const pickedEvents = byDay.get(dayKey(picked)) ?? []
 
-  function shift(months: number) {
-    const next = new Date(month.getFullYear(), month.getMonth() + months, 1)
-    setMonth(next)
-    setPicked(next)
+  function pick(day: Date) {
+    setParams({ date: dayKey(day) }, { replace: true })
   }
 
-  function pick(day: Date) {
-    setPicked(day)
-    onPickDay?.(day)
+  function shift(months: number) {
+    pick(new Date(month.getFullYear(), month.getMonth() + months, 1))
   }
 
   return (

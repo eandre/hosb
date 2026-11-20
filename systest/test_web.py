@@ -41,7 +41,16 @@ async def test_serves_the_app(web: httpx.AsyncClient):
     assert "<title>House of Soft Beasts · Calendar</title>" in page.text
 
     # The app's own routes get its page, which decides what's at them.
-    for path in ("/events/2026-11-26-house-dinner", "/s/x-abc", "/settings", "/legal/privacy", "/legal/tos"):
+    for path in (
+        "/week",
+        "/calendar?date=2026-11-19",
+        "/past",
+        "/events/2026-11-26-house-dinner",
+        "/s/x-abc",
+        "/settings",
+        "/legal/privacy",
+        "/legal/tos",
+    ):
         routed = await web.get(path)
         assert routed.status_code == 200
         assert "<title>House of Soft Beasts · Calendar</title>" in routed.text

@@ -1,13 +1,16 @@
 import { useUser } from "@clerk/react"
 import { Plus } from "lucide-react"
 import { useState } from "react"
-import { useNavigate } from "react-router"
+import { useLocation, useNavigate, useSearchParams } from "react-router"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { EventFormModal } from "@/components/event-form"
 import { EventList, EventListSkeleton } from "@/components/event-list"
 import { MonthCalendar } from "@/components/month-calendar"
+import { WeekView } from "@/components/week-view"
 import { useEvents, useMe } from "@/lib/api"
+import { parseDay } from "@/lib/dates"
+import { views, type View } from "@/lib/views"
 
 function Upcoming() {
   const { data, isPending, error } = useEvents("upcoming")
@@ -27,8 +30,12 @@ export function EventsPage() {
   const { user } = useUser()
   const { data: me } = useMe()
   const navigate = useNavigate()
+  const { pathname } = useLocation()
+  const [params] = useSearchParams()
   const [creating, setCreating] = useState(false)
-  const [day, setDay] = useState<Date | undefined>()
+  const view = (Object.keys(views) as View[]).find((v) => views[v] === pathname) ?? "upcoming"
+  // A new event is on the day picked in the calendar, if one is.
+  const day = view === "calendar" ? (parseDay(params.get("date")) ?? undefined) : undefined
 
   return (
     <div>
@@ -46,17 +53,21 @@ export function EventsPage() {
         )}
       </div>
 
-      <Tabs defaultValue="upcoming">
+      <Tabs value={view} onValueChange={(v) => navigate(views[v as View])}>
         <TabsList className="mb-5 w-full sm:w-auto">
           <TabsTrigger value="upcoming" className="flex-1 sm:flex-none">Upcoming</TabsTrigger>
+          <TabsTrigger value="week" className="flex-1 sm:flex-none">Week</TabsTrigger>
           <TabsTrigger value="calendar" className="flex-1 sm:flex-none">Calendar</TabsTrigger>
           <TabsTrigger value="past" className="flex-1 sm:flex-none">Past</TabsTrigger>
         </TabsList>
         <TabsContent value="upcoming">
           <Upcoming />
         </TabsContent>
+        <TabsContent value="week">
+          <WeekView />
+        </TabsContent>
         <TabsContent value="calendar">
-          <MonthCalendar onPickDay={setDay} />
+          <MonthCalendar />
         </TabsContent>
         <TabsContent value="past">
           <Past />

@@ -90,3 +90,43 @@ export function ago(iso: string): string {
   }
   return "within the hour"
 }
+
+/** The Monday that starts d's week, at midnight. */
+export function weekStart(d: Date): Date {
+  const start = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+  start.setDate(start.getDate() - ((start.getDay() + 6) % 7))
+  return start
+}
+
+/** d plus n days, at the same time of day. */
+export function addDays(d: Date, n: number): Date {
+  const next = new Date(d)
+  next.setDate(next.getDate() + n)
+  return next
+}
+
+/** The ISO week number of d: week 1 holds the year's first Thursday. */
+export function weekNumber(d: Date): number {
+  const thursday = addDays(weekStart(d), 3)
+  const firstThursday = addDays(weekStart(new Date(thursday.getFullYear(), 0, 4)), 3)
+  return 1 + Math.round((thursday.getTime() - firstThursday.getTime()) / (7 * 86_400_000))
+}
+
+/** "16–22 November 2026", or "30 November – 6 December 2026" across months. */
+export function formatWeekRange(start: Date): string {
+  const end = addDays(start, 6)
+  const year = (d: Date) => (d.getFullYear() === new Date().getFullYear() ? undefined : "numeric")
+  if (start.getMonth() === end.getMonth()) {
+    return `${start.getDate()}–${end.toLocaleDateString(locale, { day: "numeric", month: "long", year: year(end) })}`
+  }
+  const sameYear = start.getFullYear() === end.getFullYear()
+  return `${start.toLocaleDateString(locale, { day: "numeric", month: "long", year: sameYear ? undefined : "numeric" })} – ${end.toLocaleDateString(locale, { day: "numeric", month: "long", year: year(end) })}`
+}
+
+/** The day a URL names as "2026-11-19", or null if it names none. */
+export function parseDay(s: string | null): Date | null {
+  const m = s?.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!m) return null
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+  return dayKey(d) === s ? d : null
+}
