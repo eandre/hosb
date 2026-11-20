@@ -91,3 +91,40 @@ async def test_the_internal_routes_stay_in(gateway: httpx.AsyncClient, path: str
     # through the gateway they're the app's pages (which take no POST), or
     # the API's (which has no such route).
     assert (await gateway.post(path)).status_code in (404, 405)
+
+
+async def test_event_pages_have_link_previews(web: httpx.AsyncClient, gateway: httpx.AsyncClient):
+    if (await web.get("/")).status_code == 503:
+        pytest.skip("the app isn't built in this checkout: run `bun run build` in frontend/")
+    admin = {"Authorization": f"Bearer {session_token('user_erin', name='Erin Host', admin=True)}"}
+    created = await gateway.post(
+        "/api/events",
+        headers=admin,
+        json={
+            "title": "Supper & Song",
+            "startsAt": "2030-01-05T17:00:00+00:00",
+            "endsAt": "2030-01-05T21:00:00+00:00",
+        },
+    )
+    assert created.status_code == 201, created.text
+    event = created.json()
+
+    # What WhatsApp and the like read, signed in or not: the page's own HTML.
+    page = (await web.get(f"/events/{event['slug']}")).text
+    assert '<meta property="og:title" content="Supper &amp; Song" />' in page
+    assert "Saturday 5 January 2030, 18:00–22:00" in page
+    assert "<title>Supper &amp; Song · House of Soft Beasts</title>" in page
+
+    # A shareable link's says who invites.
+    link = await gateway.post(
+        f"/api/events/{event['id']}/share-links",
+        headers=admin,
+        json={"name": "Flyer", "invitedBy": "Lisa"},
+    )
+    assert link.status_code == 201, link.text
+    shared = (await web.get(link.json()["path"])).text
+    assert "Lisa invites you · Saturday 5 January 2030" in shared
+
+    # An event that isn't there: the calendar's own.
+    unknown = (await web.get("/events/2030-01-01-no-such-event")).text
+    assert '<meta property="og:title" content="House of Soft Beasts · Calendar" />' in unknown

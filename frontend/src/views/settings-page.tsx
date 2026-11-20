@@ -31,7 +31,6 @@ import {
 } from "@/lib/api"
 import { ago } from "@/lib/dates"
 import { useGoogleResult } from "@/lib/google-result"
-import { LegalLinks } from "@/components/site-footer"
 
 // The calendar option that makes a calendar of its own for the events.
 const NEW_CALENDAR = "new"
@@ -43,9 +42,6 @@ export function SettingsPage() {
       <h1 className="text-3xl leading-tight">Settings</h1>
       <InvitationsSection />
       <GoogleCalendarSection />
-      <p className="text-xs text-muted-foreground md:hidden">
-        <LegalLinks />
-      </p>
     </div>
   )
 }

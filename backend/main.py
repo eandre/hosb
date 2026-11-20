@@ -22,6 +22,7 @@ import admin
 import events
 import google_calendar
 import google_invitations
+import previews
 import share
 from settings import settings
 
@@ -57,6 +58,7 @@ app.include_router(google_calendar.router)
 app.include_router(google_calendar.internal)
 app.include_router(google_invitations.router)
 app.include_router(google_invitations.internal)
+app.include_router(previews.internal)
 
 
 @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])

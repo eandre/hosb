@@ -8,17 +8,26 @@ import (
 )
 
 // site serves a single-page app's built files: each file as it is, and the
-// app's page, index.html, for every other path, the app's own routes.
+// app's page, index.html, for every other path, the app's own routes, with
+// an event's link preview in it on the event's pages (preview.go).
 type site struct {
 	files fs.FS
 	// The app's page; nil if the app hasn't been built.
 	page   []byte
 	static http.Handler
+	// Looks up a page's link preview; nil for none.
+	preview previewer
+	// Whether the build has the preview image (preview.go).
+	image bool
 }
 
-// newSite serves the app built into files.
-func newSite(files fs.FS) *site {
-	s := &site{files: files, static: http.FileServerFS(files)}
+// newSite serves the app built into files, with the previews preview looks
+// up (nil for none).
+func newSite(files fs.FS, preview previewer) *site {
+	s := &site{files: files, static: http.FileServerFS(files), preview: preview}
+	if _, err := fs.Stat(files, strings.TrimPrefix(previewImage, "/")); err == nil {
+		s.image = true
+	}
 	if page, err := fs.ReadFile(files, "index.html"); err == nil {
 		s.page = page
 	}
@@ -59,10 +68,15 @@ func (s *site) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// The app's page, for its own routes: it decides what's at the path.
+	var p *preview
+	if s.preview != nil {
+		p = s.preview(r.Context(), path.Clean("/"+r.URL.Path))
+	}
+	page := withTags(s.page, p, origin(r), s.image)
 	h.Set("Content-Type", "text/html; charset=utf-8")
 	h.Set("Cache-Control", "no-cache")
 	w.WriteHeader(http.StatusOK)
 	if r.Method != http.MethodHead {
-		_, _ = w.Write(s.page)
+		_, _ = w.Write(page)
 	}
 }

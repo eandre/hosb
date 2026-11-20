@@ -40,8 +40,9 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	previews := fetchPreviews(&http.Client{Transport: services.Transport(nil)}, community)
 	h := handler(
-		tracing.HTTPHandler("/{path...}", newSite(built)),
+		tracing.HTTPHandler("/{path...}", newSite(built, previews)),
 		tracing.HTTPHandler("/api/{path...}", apiProxy(community, services.Transport(nil))),
 	)
 

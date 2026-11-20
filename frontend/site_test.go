@@ -14,6 +14,7 @@ var built = fstest.MapFS{
 	"index.html":         {Data: []byte("<html><head><title>x</title></head><body></body></html>")},
 	"favicon.svg":        {Data: []byte("<svg/>")},
 	"assets/index-a1.js": {Data: []byte("console.log(1)")},
+	"social-preview.jpg": {Data: []byte("jpeg")},
 }
 
 func get(t *testing.T, h http.Handler, method, target string) *httptest.ResponseRecorder {
@@ -24,10 +25,10 @@ func get(t *testing.T, h http.Handler, method, target string) *httptest.Response
 }
 
 func TestTheAppsRoutesGetItsPage(t *testing.T) {
-	s := newSite(built)
+	s := newSite(built, nil)
 	for _, target := range []string{"/", "/events/2026-11-26-house-dinner", "/s/x-abc", "/index.html"} {
 		w := get(t, s, http.MethodGet, target)
-		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "<title>x</title>") {
+		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "<title>House of Soft Beasts · Calendar</title>") {
 			t.Fatalf("%s: %d %s", target, w.Code, w.Body.String())
 		}
 		if got := w.Header().Get("Cache-Control"); got != "no-cache" {
@@ -40,7 +41,7 @@ func TestTheAppsRoutesGetItsPage(t *testing.T) {
 }
 
 func TestFilesAreServedAsTheyAre(t *testing.T) {
-	s := newSite(built)
+	s := newSite(built, nil)
 	w := get(t, s, http.MethodGet, "/assets/index-a1.js")
 	if w.Code != http.StatusOK || w.Body.String() != "console.log(1)" {
 		t.Fatalf("asset: %d %q", w.Code, w.Body.String())
@@ -57,7 +58,7 @@ func TestFilesAreServedAsTheyAre(t *testing.T) {
 }
 
 func TestAnUnbuiltAppSaysSo(t *testing.T) {
-	if w := get(t, newSite(fstest.MapFS{}), http.MethodGet, "/"); w.Code != http.StatusServiceUnavailable {
+	if w := get(t, newSite(fstest.MapFS{}, nil), http.MethodGet, "/"); w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("unbuilt: %d", w.Code)
 	}
 }
@@ -76,7 +77,7 @@ func TestOnlyTheAPIIsPassedOn(t *testing.T) {
 	}))
 	defer backend.Close()
 	target, _ := url.Parse(backend.URL)
-	h := handler(newSite(built), apiProxy(target, http.DefaultTransport))
+	h := handler(newSite(built, nil), apiProxy(target, http.DefaultTransport))
 
 	req := httptest.NewRequest(http.MethodPost, "/api/events?x=1", strings.NewReader(`{"a":1}`))
 	req.Header.Set("Authorization", "Bearer t")

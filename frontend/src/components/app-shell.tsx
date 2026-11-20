@@ -57,7 +57,7 @@ export function AppShell({ publishableKey, children }: { publishableKey: string;
         <QueryClientProvider client={queryClient}>
           <div className="flex min-h-dvh flex-col">
             <SiteHeader />
-            <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-28 pt-4 sm:px-6 md:pb-12">
+            <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-8 pt-4 sm:px-6 md:pb-12">
               <ClerkLoading>
                 <div className="flex justify-center py-24">
                   <Candle className="h-16 animate-pulse" />
@@ -73,7 +73,8 @@ export function AppShell({ publishableKey, children }: { publishableKey: string;
                 <Show when="signed-in">{children}</Show>
               </ClerkLoaded>
             </main>
-            <SiteFooter className="hidden md:block" />
+            {/* Room below it on phones for the events page's floating button. */}
+            <SiteFooter className="pb-28 md:pb-8" />
           </div>
           <Toaster theme="dark" position="top-center" />
         </QueryClientProvider>

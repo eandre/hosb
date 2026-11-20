@@ -136,6 +136,16 @@ passes `/api/*` on to `community` (a reverse proxy over Encore's service
 transport, so each API call continues the request's trace). The page calls the
 API on its own origin.
 
+An event's page, and a shareable link's, are served with the event's name and
+date in their `<title>` and link-preview tags (`og:`, `twitter:`), signed in or
+not, so that a link shared in WhatsApp or Slack shows them: those apps read the
+page's HTML and run none of its scripts. `web` looks them up from `community`
+(`backend/previews.py`, under `/internal`) as it serves the page
+(`frontend/preview.go`), and serves the page without them if that fails.
+Every page's preview has the house's image, `frontend/public/social-preview.jpg`:
+a JPEG of `social-preview.png` beside it, small enough for WhatsApp, which skips
+images over about 300 KB. Replace both to change it, and keep it 1200×630.
+
 `community` isn't exposed itself: a gateway can't route `/api` to it and every
 other path to `web`, as a path at `/` owns everything below it (ENC0029). So its
 routes for Encore alone, such as the cron jobs' under `/internal`, are reached
