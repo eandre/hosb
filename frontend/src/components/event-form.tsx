@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { ResponsiveModal } from "@/components/responsive-modal"
-import { useSaveEvent, type CalendarEvent, type EventDetail } from "@/lib/api"
+import { Switch } from "@/components/ui/switch"
+import { DEFAULT_MAX_GUESTS, MAX_GUESTS, useSaveEvent, type CalendarEvent, type EventDetail } from "@/lib/api"
 import { dayKey, fromInstant, toInstant } from "@/lib/dates"
 
 interface Fields {
@@ -16,6 +17,8 @@ interface Fields {
   location: string
   capacity: string
   shareSignupCap: string
+  maxGuests: string
+  guestNamesRequired: boolean
   description: string
 }
 
@@ -29,6 +32,8 @@ function initial(event?: CalendarEvent, date?: Date): Fields {
       location: "",
       capacity: "",
       shareSignupCap: "",
+      maxGuests: DEFAULT_MAX_GUESTS.toString(),
+      guestNamesRequired: true,
       description: "",
     }
   }
@@ -41,6 +46,8 @@ function initial(event?: CalendarEvent, date?: Date): Fields {
     location: event.location,
     capacity: event.capacity?.toString() ?? "",
     shareSignupCap: event.shareSignupCap?.toString() ?? "",
+    maxGuests: event.maxGuests.toString(),
+    guestNamesRequired: event.guestNamesRequired,
     description: event.description,
   }
 }
@@ -122,6 +129,8 @@ function EventForm({
           endsAt,
           capacity: fields.capacity ? Number(fields.capacity) : null,
           shareSignupCap: fields.shareSignupCap ? Number(fields.shareSignupCap) : null,
+          maxGuests: fields.maxGuests ? Number(fields.maxGuests) : 0,
+          guestNamesRequired: fields.guestNamesRequired,
         },
       },
       {
@@ -184,6 +193,37 @@ function EventForm({
           value={fields.description}
           onChange={set("description")}
           placeholder="What will happen, what to bring…"
+        />
+      </div>
+      <div className="grid grid-cols-[1fr_7rem] items-end gap-4">
+        <div>
+          <Label htmlFor="maxGuests">Guests per member</Label>
+          <p className="mt-1 text-xs text-muted-foreground">
+            How many guests each member can bring when they RSVP. 0 for none.
+          </p>
+        </div>
+        <Input
+          id="maxGuests"
+          type="number"
+          inputMode="numeric"
+          required
+          min={0}
+          max={MAX_GUESTS}
+          value={fields.maxGuests}
+          onChange={set("maxGuests")}
+        />
+      </div>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <Label htmlFor="guestNamesRequired">Require guests&apos; names</Label>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Members give each guest&apos;s full name, for the door list.
+          </p>
+        </div>
+        <Switch
+          id="guestNamesRequired"
+          checked={fields.guestNamesRequired}
+          onCheckedChange={(checked) => setFields((f) => ({ ...f, guestNamesRequired: checked }))}
         />
       </div>
       <div className="grid grid-cols-[1fr_7rem] items-end gap-4">

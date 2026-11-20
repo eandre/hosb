@@ -116,7 +116,7 @@ async def attendees_csv(event_id: int, _: Admin) -> Response:
         await db.read()
         .query(
             """
-        SELECT m.name, m.email, r.status, r.guests, r.updated_at
+        SELECT m.name, m.email, r.status, r.guests, r.guest_names, r.updated_at
         FROM rsvps r JOIN members m ON m.id = r.user_id
         WHERE r.event_id = $1
         ORDER BY CASE r.status WHEN 'going' THEN 0 WHEN 'maybe' THEN 1 ELSE 2 END, m.name
@@ -151,6 +151,17 @@ async def attendees_csv(event_id: int, _: Admin) -> Response:
                 r["updated_at"].isoformat(timespec="minutes"),
             ]
         )
+        # The guests they named, each on the door list.
+        for name in r["guest_names"]:
+            writer.writerow(
+                [
+                    cell(name),
+                    "",
+                    cell(f"Guest of {r['name']}"),
+                    0,
+                    r["updated_at"].isoformat(timespec="minutes"),
+                ]
+            )
     # Guests who signed up through a shareable link.
     for g in guests:
         writer.writerow(

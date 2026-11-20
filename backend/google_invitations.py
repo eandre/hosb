@@ -256,8 +256,8 @@ async def read_answers(google: Google, org: dict[str, Any]) -> set[int]:
             if status is None:
                 continue  # needsAction: no answer, which withdraws nothing
             try:
-                guests = await current_guests(event_id, user_id) if status == "going" else 0
-                await save_rsvp(event_id, user_id, status, guests)
+                # A yes keeps the guests they said they'd bring.
+                await save_rsvp(event_id, user_id, status, None)
                 logger.info(
                     "took an invitation's answer as an rsvp",
                     extra={"user": user_id, "event_id": event_id, "status": status},
@@ -275,17 +275,6 @@ async def read_answers(google: Google, org: dict[str, Any]) -> set[int]:
     await db.exec("UPDATE google_organizer SET sync_token = $1", token)
     org["sync_token"] = token
     return refused
-
-
-async def current_guests(event_id: int, user_id: str) -> int:
-    """The guests a member already said they'd bring, which an invitation's
-    yes keeps: Google has no say in them."""
-    row = await db.query(
-        "SELECT guests FROM rsvps WHERE event_id = $1 AND user_id = $2 AND status = 'going'",
-        event_id,
-        user_id,
-    ).first()
-    return 0 if row is None else row["guests"]
 
 
 # --- sending invitations -------------------------------------------------------

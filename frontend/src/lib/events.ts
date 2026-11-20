@@ -10,3 +10,12 @@ export const statusLabel: Record<RSVPStatus, string> = {
 export function placesLeft(event: CalendarEvent): number | null {
   return event.capacity === null ? null : Math.max(event.capacity - event.goingCount, 0)
 }
+
+const DEFAULT_DURATION_MS = 3 * 60 * 60 * 1000
+
+/** Whether the event is over: an event without an end lasts three hours,
+ * as the backend has it. */
+export function isOver(event: CalendarEvent): boolean {
+  const end = event.endsAt ? new Date(event.endsAt) : new Date(new Date(event.startsAt).getTime() + DEFAULT_DURATION_MS)
+  return end < new Date()
+}

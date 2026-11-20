@@ -24,9 +24,10 @@ async def create_event(admin: Member, **fields) -> dict:
     return response.json()
 
 
-async def rsvp(member: Member, event: dict, status: str, guests: int = 0) -> None:
+async def rsvp(member: Member, event: dict, status: str, *guests: str) -> None:
     response = await member.client.put(
-        f"/api/events/{event['id']}/rsvp", json={"status": status, "guests": guests}
+        f"/api/events/{event['id']}/rsvp",
+        json={"status": status, "guests": len(guests), "guestNames": list(guests)},
     )
     assert response.status_code == 200, response.text
 
@@ -48,7 +49,7 @@ async def test_stats_and_members(admin: Member, ada: Member, grace: Member):
     past = await create_event(
         admin, title="Last dinner", startsAt=at(days=-10), endsAt=at(days=-10, hours=2)
     )
-    await rsvp(ada, dinner, "going", guests=2)
+    await rsvp(ada, dinner, "going", "Charles Babbage", "Mary Somerville")
     await rsvp(ada, ritual, "going")
     await rsvp(grace, dinner, "maybe")
     # One went to the past event before it was over.
@@ -94,7 +95,7 @@ async def test_a_member_made_admin_shows_as_one(sign_in, admin: Member):
 async def test_door_list_csv(admin: Member, ada: Member, grace: Member, sign_in):
     event = await create_event(admin, title="Performance Night!", startsAt="2030-03-14T18:00:00Z")
     await rsvp(grace, event, "maybe")
-    await rsvp(ada, event, "going", guests=1)
+    await rsvp(ada, event, "going", "Charles Babbage")
     # A name that a spreadsheet would run as a formula.
     mallory = sign_in("user_mallory", '=HYPERLINK("https://evil.example")')
     await rsvp(mallory, event, "not_going")
@@ -110,6 +111,8 @@ async def test_door_list_csv(admin: Member, ada: Member, grace: Member, sign_in)
     assert rows[0] == ["Name", "Email", "Answer", "Guests", "Answered at"]
     assert [r[:4] for r in rows[1:]] == [
         ["Ada Lovelace", "user_ada@example.test", "Going", "1"],
+        # The guests a member named, on the door list after them.
+        ["Charles Babbage", "", "Guest of Ada Lovelace", "0"],
         ["Grace Hopper", "user_grace@example.test", "Maybe", "0"],
         ['\'=HYPERLINK("https://evil.example")', "user_mallory@example.test", "Can't go", "0"],
     ]

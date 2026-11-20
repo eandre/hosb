@@ -26,6 +26,10 @@ export interface CalendarEvent {
   capacity: number | null
   /** How many guests a member's shareable link may sign up; null: no limit. */
   shareSignupCap: number | null
+  /** How many guests each member may bring. */
+  maxGuests: number
+  /** Whether members must give each guest's full name. */
+  guestNamesRequired: boolean
   /** null for an event imported from the old calendar. */
   createdBy: string | null
   createdAt: string
@@ -35,7 +39,7 @@ export interface CalendarEvent {
   /** Of goingCount: guests signed up through a shareable link. */
   guestCount: number
   maybeCount: number
-  myRsvp: { status: RSVPStatus; guests: number } | null
+  myRsvp: { status: RSVPStatus; guests: number; guestNames: string[] } | null
 }
 
 export interface Attendee {
@@ -44,6 +48,8 @@ export interface Attendee {
   imageUrl: string
   status: RSVPStatus
   guests: number
+  /** Those the member named, of their guests. */
+  guestNames: string[]
   updatedAt: string
 }
 
@@ -110,6 +116,8 @@ export interface EventInput {
   endsAt: string | null
   capacity: number | null
   shareSignupCap: number | null
+  maxGuests: number
+  guestNamesRequired: boolean
 }
 
 export interface AdminStats {
@@ -184,7 +192,10 @@ export interface OrganizerStatus {
   events: number
 }
 
-export const MAX_GUESTS = 4
+/** The guests a member may bring to an event unless its admin says otherwise,
+ * and the most any event allows (backend/events.py). */
+export const DEFAULT_MAX_GUESTS = 4
+export const MAX_GUESTS = 20
 
 export class ApiError extends Error {
   readonly status: number
@@ -329,7 +340,7 @@ export function useRsvp(id: number) {
   const api = useApi()
   const changed = useEventChanged()
   return useMutation({
-    mutationFn: (rsvp: { status: RSVPStatus; guests: number } | null) =>
+    mutationFn: (rsvp: { status: RSVPStatus; guests: number; guestNames: string[] } | null) =>
       api<EventDetail>(`/api/events/${id}/rsvp`, rsvp
         ? { method: "PUT", body: JSON.stringify(rsvp) }
         : { method: "DELETE" }),

@@ -4,16 +4,17 @@ import { Link, useNavigate, useParams } from "react-router"
 import { toast } from "sonner"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { DeleteEventDialog } from "@/components/delete-event-dialog"
 import { EventFormModal } from "@/components/event-form"
 import { ShareButton, ShareLinksPanel } from "@/components/share-link"
-import { placesLeft, statusLabel } from "@/lib/events"
+import { isOver, placesLeft, statusLabel } from "@/lib/events"
 import {
   ApiError,
-  MAX_GUESTS,
   useEvent,
   useMe,
   useRsvp,
@@ -25,12 +26,7 @@ import {
 import { formatLongDate, formatTimeRange } from "@/lib/dates"
 import { cn } from "@/lib/utils"
 
-const DEFAULT_DURATION_MS = 3 * 60 * 60 * 1000
 
-function isOver(event: EventDetail) {
-  const end = event.endsAt ? new Date(event.endsAt) : new Date(new Date(event.startsAt).getTime() + DEFAULT_DURATION_MS)
-  return end < new Date()
-}
 
 function initials(name: string) {
   return name
@@ -147,31 +143,68 @@ export function EventPage() {
   )
 }
 
+/** A guest's name as given: first and last, at least. */
+const isFullName = (name: string) => name.trim().split(/\s+/).filter(Boolean).length >= 2
+
 function RsvpCard({ event }: { event: EventDetail }) {
   const rsvp = useRsvp(event.id)
   const mine = event.myRsvp
-  const [guests, setGuests] = useState(mine?.guests ?? 0)
+  const saved = () => ({
+    count: mine?.status === "going" ? mine.guests : 0,
+    names: mine?.status === "going" ? mine.guestNames : [],
+  })
+  const [guests, setGuests] = useState(saved().count)
+  const [names, setNames] = useState<string[]>(saved().names)
+  const [checked, setChecked] = useState(false)
   const left = placesLeft(event)
   // Places this member could take: what's left plus what they hold now.
   const room = left === null ? Infinity : left + (mine?.status === "going" ? 1 + mine.guests : 0)
   const full = room < 1
+  // Guests already brought under a higher limit stay; no more are added.
+  const most = Math.max(event.maxGuests, saved().count)
+  const required = event.guestNamesRequired
 
-  function send(status: RSVPStatus | null, nextGuests = guests) {
-    const payload = status ? { status, guests: status === "going" ? nextGuests : 0 } : null
+  const given = Array.from({ length: guests }, (_, i) => (names[i] ?? "").trim().replace(/\s+/g, " "))
+  const missing = required ? given.map((n) => !isFullName(n)) : given.map(() => false)
+  const changed =
+    mine?.status === "going" &&
+    (guests !== saved().count || given.filter(Boolean).join("\n") !== saved().names.join("\n"))
+
+  function reset() {
+    setGuests(saved().count)
+    setNames(saved().names)
+    setChecked(false)
+  }
+
+  function send(status: RSVPStatus | null) {
+    if (status === "going" && missing.some(Boolean)) {
+      setChecked(true)
+      toast.error(guests === 1 ? "Give your guest's full name" : "Give each guest's full name")
+      return
+    }
+    const payload = status
+      ? {
+          status,
+          guests: status === "going" ? guests : 0,
+          guestNames: status === "going" ? given.filter(Boolean) : [],
+        }
+      : null
     rsvp.mutate(payload, {
       onSuccess: () => {
-        if (payload?.status === "going") toast.success("See you there")
+        setChecked(false)
+        if (payload?.status === "going") toast.success(changed ? "Guests saved" : "See you there")
+        if (payload?.status !== "going") {
+          setGuests(0)
+          setNames([])
+        }
       },
-      onError: (err) => {
-        toast.error(err.message)
-        setGuests(mine?.guests ?? 0)
-      },
+      onError: (err) => toast.error(err.message),
     })
   }
 
   function changeGuests(n: number) {
     setGuests(n)
-    if (mine?.status === "going") send("going", n)
+    setNames((current) => current.slice(0, n))
   }
 
   return (
@@ -203,33 +236,86 @@ function RsvpCard({ event }: { event: EventDetail }) {
         <p className="mt-2 text-sm text-ember">The event is full.</p>
       )}
 
-      <div className="mt-4 flex items-center justify-between gap-3">
-        <div>
-          <p className="text-sm">Bringing guests</p>
-          <p className="text-xs text-muted-foreground">Up to {MAX_GUESTS}, with your guest passes</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label="One guest fewer"
-            disabled={guests === 0 || rsvp.isPending}
-            onClick={() => changeGuests(guests - 1)}
-          >
-            <Minus />
-          </Button>
-          <span className="w-5 text-center tabular-nums" aria-live="polite">{guests}</span>
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label="One more guest"
-            disabled={guests >= MAX_GUESTS || guests + 1 >= room || rsvp.isPending}
-            onClick={() => changeGuests(guests + 1)}
-          >
-            <Plus />
-          </Button>
-        </div>
-      </div>
+      {most > 0 && (
+        <>
+          <div className="mt-4 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm">Bringing guests</p>
+              <p className="text-xs text-muted-foreground">
+                Up to {event.maxGuests}, with your guest passes
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                aria-label="One guest fewer"
+                disabled={guests === 0 || rsvp.isPending}
+                onClick={() => changeGuests(guests - 1)}
+              >
+                <Minus />
+              </Button>
+              <span className="w-5 text-center tabular-nums" aria-live="polite">{guests}</span>
+              <Button
+                variant="outline"
+                size="icon"
+                aria-label="One more guest"
+                disabled={guests >= event.maxGuests || guests + 1 >= room || rsvp.isPending}
+                onClick={() => changeGuests(guests + 1)}
+              >
+                <Plus />
+              </Button>
+            </div>
+          </div>
+
+          {guests > 0 && (
+            <div className="mt-3 grid gap-2">
+              {Array.from({ length: guests }, (_, i) => (
+                <div key={i} className="grid gap-1">
+                  <Label htmlFor={`guest-${i}`} className="sr-only">
+                    Guest {i + 1}&apos;s full name
+                  </Label>
+                  <Input
+                    id={`guest-${i}`}
+                    autoComplete="off"
+                    maxLength={120}
+                    value={names[i] ?? ""}
+                    aria-invalid={checked && missing[i] ? true : undefined}
+                    disabled={rsvp.isPending}
+                    onChange={(e) =>
+                      setNames((current) => {
+                        const next = [...current]
+                        while (next.length < guests) next.push("")
+                        next[i] = e.target.value
+                        return next
+                      })
+                    }
+                    placeholder={
+                      required ? `Guest ${i + 1}: first and last name` : `Guest ${i + 1}'s name (optional)`
+                    }
+                  />
+                </div>
+              ))}
+              {checked && missing.some(Boolean) && (
+                <p className="text-xs text-ember" role="alert">
+                  This event asks for each guest&apos;s full name, for the door list.
+                </p>
+              )}
+            </div>
+          )}
+
+          {changed && (
+            <div className="mt-3 flex justify-end gap-2">
+              <Button variant="ghost" size="sm" disabled={rsvp.isPending} onClick={reset}>
+                Cancel
+              </Button>
+              <Button size="sm" disabled={rsvp.isPending} onClick={() => send("going")}>
+                Save guests
+              </Button>
+            </div>
+          )}
+        </>
+      )}
 
       {mine && (
         <Button variant="link" size="sm" className="mt-2 h-auto px-0 text-muted-foreground" onClick={() => send(null)}>
@@ -256,13 +342,18 @@ function Attendees({ attendees }: { attendees: Attendee[] }) {
           </h3>
           <ul className="space-y-2">
             {people.map((a) => (
-              <li key={a.userId} className={cn("flex items-center gap-3", status === "not_going" && "opacity-60")}>
-                <Avatar className="size-8">
-                  <AvatarImage src={a.imageUrl || undefined} alt="" />
-                  <AvatarFallback className="text-xs">{initials(a.name)}</AvatarFallback>
-                </Avatar>
-                <span className="min-w-0 flex-1 truncate text-sm">{a.name || "A member"}</span>
-                {a.guests > 0 && <span className="text-xs text-muted-foreground">+{a.guests}</span>}
+              <li key={a.userId} className={cn(status === "not_going" && "opacity-60")}>
+                <div className="flex items-center gap-3">
+                  <Avatar className="size-8">
+                    <AvatarImage src={a.imageUrl || undefined} alt="" />
+                    <AvatarFallback className="text-xs">{initials(a.name)}</AvatarFallback>
+                  </Avatar>
+                  <span className="min-w-0 flex-1 truncate text-sm">{a.name || "A member"}</span>
+                  {a.guests > 0 && <span className="text-xs text-muted-foreground">+{a.guests}</span>}
+                </div>
+                {a.guestNames.length > 0 && (
+                  <p className="mt-0.5 pl-11 text-xs text-muted-foreground">With {a.guestNames.join(", ")}</p>
+                )}
               </li>
             ))}
           </ul>

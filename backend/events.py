@@ -10,7 +10,9 @@ GET    /api/events/{ref}            an event and who is coming, by its slug (or 
                                     had) or its id
 PUT    /api/events/{id}             change an event (admin)
 DELETE /api/events/{id}             delete an event (admin)
-PUT    /api/events/{id}/rsvp        RSVP {"status": "going"|"maybe"|"not_going", "guests": 0-4}
+PUT    /api/events/{id}/rsvp        RSVP {"status": "going"|"maybe"|"not_going", "guests": n,
+                                    "guestNames": [...]}: up to the event's maxGuests, with
+                                    each one's full name if it has guestNamesRequired
 DELETE /api/events/{id}/rsvp        withdraw one's RSVP
 
 The admin page's own routes are in admin.py, and shareable links' in share.py.
@@ -40,7 +42,11 @@ router = APIRouter(prefix="/api")
 # An event without an end time counts as ongoing for this long after it starts.
 DEFAULT_DURATION = timedelta(hours=3)
 DEFAULT_DURATION_SQL = "interval '3 hours'"
-MAX_GUESTS = 4
+# The guests a member may bring to an event unless its admin says otherwise,
+# and the most any event allows.
+DEFAULT_MAX_GUESTS = 4
+MAX_GUESTS = 20
+GUEST_NAME_LENGTH = 120
 
 RSVPStatus = Literal["going", "maybe", "not_going"]
 
@@ -68,6 +74,9 @@ class EventIn(Model):
     capacity: int | None = Field(default=None, ge=1, le=10000)
     # How many guests a member's shareable link may sign up; None for no limit.
     share_signup_cap: int | None = Field(default=None, ge=1, le=10000)
+    # How many guests each member may bring, and whether they must name them.
+    max_guests: int = Field(default=DEFAULT_MAX_GUESTS, ge=0, le=MAX_GUESTS)
+    guest_names_required: bool = True
 
     @model_validator(mode="after")
     def _check(self) -> EventIn:
@@ -84,6 +93,7 @@ class EventIn(Model):
 class MyRSVP(Model):
     status: RSVPStatus
     guests: int
+    guest_names: list[str]
 
 
 class Event(Model):
@@ -96,6 +106,8 @@ class Event(Model):
     ends_at: datetime | None
     capacity: int | None
     share_signup_cap: int | None
+    max_guests: int
+    guest_names_required: bool
     # None for an event imported from the old calendar.
     created_by: str | None
     created_at: datetime
@@ -114,6 +126,8 @@ class Attendee(Model):
     image_url: str
     status: RSVPStatus
     guests: int
+    # Those the member named, of their guests.
+    guest_names: list[str]
     updated_at: datetime
 
 
@@ -139,6 +153,24 @@ class EventList(Model):
 class RSVPIn(Model):
     status: RSVPStatus
     guests: int = Field(default=0, ge=0, le=MAX_GUESTS)
+    guest_names: list[str] = Field(default=[], max_length=MAX_GUESTS)
+
+    @model_validator(mode="after")
+    def _check(self) -> RSVPIn:
+        # Spaces as a name is written; the event's rules are save_rsvp's.
+        self.guest_names = [" ".join(n.split()) for n in self.guest_names]
+        if any(len(n) > GUEST_NAME_LENGTH for n in self.guest_names):
+            raise ValueError(f"a guest's name is at most {GUEST_NAME_LENGTH} characters")
+        if len(self.guest_names) > self.guests:
+            raise ValueError("more guest names than guests")
+        return self
+
+
+class Guests(Model):
+    """The guests a member brings, as they gave them."""
+
+    count: int
+    names: list[str]
 
 
 async def upsert_member(user: User) -> None:
@@ -194,17 +226,17 @@ Admin = Annotated[User, Depends(admin)]
 # clause goes in {where}, made only of fixed fragments with parameters.
 EVENTS_QUERY = """
 SELECT e.id, e.slug, e.title, e.description, e.location, e.starts_at, e.ends_at,
-       e.capacity, e.share_signup_cap, e.created_by, e.created_at, e.updated_at,
+       e.capacity, e.share_signup_cap, e.max_guests, e.guest_names_required, e.created_by, e.created_at, e.updated_at,
        (COALESCE(SUM(1 + r.guests) FILTER (WHERE r.status = 'going'), 0)
         + (SELECT count(*) FROM guest_signups g WHERE g.event_id = e.id))::int AS going_count,
        (SELECT count(*) FROM guest_signups g WHERE g.event_id = e.id)::int AS guest_count,
        COUNT(r.user_id) FILTER (WHERE r.status = 'maybe')::int AS maybe_count,
-       mine.status AS my_status, mine.guests AS my_guests
+       mine.status AS my_status, mine.guests AS my_guests, mine.guest_names AS my_guest_names
 FROM events e
 LEFT JOIN rsvps r ON r.event_id = e.id
 LEFT JOIN rsvps mine ON mine.event_id = e.id AND mine.user_id = $1
 {where}
-GROUP BY e.id, mine.status, mine.guests
+GROUP BY e.id, mine.status, mine.guests, mine.guest_names
 {order}
 """
 
@@ -212,7 +244,9 @@ GROUP BY e.id, mine.status, mine.guests
 def to_event(row: dict[str, Any]) -> Event:
     mine = None
     if row["my_status"] is not None:
-        mine = MyRSVP(status=row["my_status"], guests=row["my_guests"])
+        mine = MyRSVP(
+            status=row["my_status"], guests=row["my_guests"], guest_names=row["my_guest_names"]
+        )
     return Event(
         id=row["id"],
         slug=row["slug"],
@@ -223,6 +257,8 @@ def to_event(row: dict[str, Any]) -> Event:
         ends_at=row["ends_at"],
         capacity=row["capacity"],
         share_signup_cap=row["share_signup_cap"],
+        max_guests=row["max_guests"],
+        guest_names_required=row["guest_names_required"],
         created_by=row["created_by"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
@@ -241,7 +277,7 @@ async def load_event(event_id: int, user_id: str) -> EventDetail:
         raise HTTPException(status_code=404, detail="no such event")
     attendees = await db.query(
         """
-        SELECT r.user_id, m.name, m.image_url, r.status, r.guests, r.updated_at
+        SELECT r.user_id, m.name, m.image_url, r.status, r.guests, r.guest_names, r.updated_at
         FROM rsvps r JOIN members m ON m.id = r.user_id
         WHERE r.event_id = $1
         ORDER BY CASE r.status WHEN 'going' THEN 0 WHEN 'maybe' THEN 1 ELSE 2 END,
@@ -319,8 +355,9 @@ async def create_event(event: EventIn, user: Admin) -> EventDetail:
         row = await tx.query(
             """
             INSERT INTO events (title, description, location, starts_at, ends_at, capacity,
-                                share_signup_cap, created_by, slug)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'new-' || gen_random_uuid())
+                                share_signup_cap, max_guests, guest_names_required,
+                                created_by, slug)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'new-' || gen_random_uuid())
             RETURNING id
             """,
             event.title,
@@ -330,6 +367,8 @@ async def create_event(event: EventIn, user: Admin) -> EventDetail:
             event.ends_at,
             event.capacity,
             event.share_signup_cap,
+            event.max_guests,
+            event.guest_names_required,
             user.id,
         ).one()
         await assign_slug(tx, row["id"], event.title, event.starts_at)
@@ -350,7 +389,8 @@ async def update_event(event_id: int, event: EventIn, user: Admin) -> EventDetai
             """
             UPDATE events
             SET title = $2, description = $3, location = $4, starts_at = $5,
-                ends_at = $6, capacity = $7, share_signup_cap = $8, updated_at = now()
+                ends_at = $6, capacity = $7, share_signup_cap = $8, max_guests = $9,
+                guest_names_required = $10, updated_at = now()
             WHERE id = $1
             """,
             event_id,
@@ -361,6 +401,8 @@ async def update_event(event_id: int, event: EventIn, user: Admin) -> EventDetai
             event.ends_at,
             event.capacity,
             event.share_signup_cap,
+            event.max_guests,
+            event.guest_names_required,
         )
         if result.rows_affected == 0:
             raise HTTPException(status_code=404, detail="no such event")
@@ -381,19 +423,49 @@ async def delete_event(event_id: int, user: Admin) -> Response:
     return Response(status_code=204)
 
 
-async def save_rsvp(event_id: int, user_id: str, status: RSVPStatus, guests: int) -> None:
+def check_guests(guests: Guests, max_guests: int, names_required: bool) -> None:
+    """Raise unless the guests keep to an event's rules.
+
+    Raises:
+        HTTPException: 422 if they are more than it allows, or it wants each
+            one's full name, first and last, and one is missing.
+    """
+    if guests.count > max_guests:
+        raise HTTPException(
+            status_code=422,
+            detail="this event takes no guests"
+            if max_guests == 0
+            else f"you can bring up to {max_guests} guest(s) to this event",
+        )
+    if names_required and (
+        len(guests.names) < guests.count or any(len(n.split()) < 2 for n in guests.names)
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="give each guest's full name, first and last",
+        )
+
+
+async def save_rsvp(event_id: int, user_id: str, status: RSVPStatus, guests: Guests | None) -> None:
     """Record the member's RSVP, as they gave it in the app or answered an
     invitation in their calendar, and publish the change.
 
+    guests are those they bring if going, kept to the event's rules; None
+    keeps the ones they said they'd bring, as an invitation's yes does:
+    Google has no say in them.
+
     Raises:
         HTTPException: 404 if there is no such event, 409 if it is over, or
-            full for the member and their guests going.
+            full for the member and their guests going, and 422 if the
+            guests break its rules (check_guests).
     """
-    guests = guests if status == "going" else 0
     async with db.begin() as tx:
         # Lock the event so that concurrent RSVPs can't overfill it.
         event = await tx.query(
-            "SELECT capacity, starts_at, ends_at FROM events WHERE id = $1 FOR UPDATE",
+            """
+            SELECT capacity, starts_at, ends_at, max_guests, guest_names_required
+            FROM events WHERE id = $1 FOR UPDATE
+            """,
             event_id,
         ).first()
         if event is None:
@@ -401,6 +473,22 @@ async def save_rsvp(event_id: int, user_id: str, status: RSVPStatus, guests: int
         ends = event["ends_at"] or event["starts_at"] + DEFAULT_DURATION
         if ends < datetime.now(UTC):
             raise HTTPException(status_code=409, detail="the event is over")
+        if status != "going":
+            guests = Guests(count=0, names=[])
+        elif guests is None:
+            had = await tx.query(
+                """
+                SELECT guests, guest_names FROM rsvps
+                WHERE event_id = $1 AND user_id = $2 AND status = 'going'
+                """,
+                event_id,
+                user_id,
+            ).first()
+            guests = Guests(
+                count=had["guests"] if had else 0, names=had["guest_names"] if had else []
+            )
+        else:
+            check_guests(guests, event["max_guests"], event["guest_names_required"])
         if status == "going" and event["capacity"] is not None:
             taken = await tx.query(
                 """
@@ -413,7 +501,7 @@ async def save_rsvp(event_id: int, user_id: str, status: RSVPStatus, guests: int
                 event_id,
                 user_id,
             ).one()
-            if taken["n"] + 1 + guests > event["capacity"]:
+            if taken["n"] + 1 + guests.count > event["capacity"]:
                 left = max(event["capacity"] - taken["n"], 0)
                 raise HTTPException(
                     status_code=409,
@@ -421,22 +509,25 @@ async def save_rsvp(event_id: int, user_id: str, status: RSVPStatus, guests: int
                 )
         await tx.exec(
             """
-            INSERT INTO rsvps (event_id, user_id, status, guests)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO rsvps (event_id, user_id, status, guests, guest_names)
+            VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT (event_id, user_id) DO UPDATE
-                SET status = EXCLUDED.status, guests = EXCLUDED.guests, updated_at = now()
+                SET status = EXCLUDED.status, guests = EXCLUDED.guests,
+                    guest_names = EXCLUDED.guest_names, updated_at = now()
             """,
             event_id,
             user_id,
             status,
-            guests,
+            guests.count,
+            guests.names,
         )
     await notify(user_id=user_id, event_id=event_id)
 
 
 @router.put("/events/{event_id}/rsvp")
 async def rsvp(event_id: int, body: RSVPIn, user: Member) -> EventDetail:
-    await save_rsvp(event_id, user.id, body.status, body.guests)
+    names = [n for n in body.guest_names if n]
+    await save_rsvp(event_id, user.id, body.status, Guests(count=body.guests, names=names))
     return await load_event(event_id, user.id)
 
 

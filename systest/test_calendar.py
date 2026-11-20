@@ -201,26 +201,29 @@ async def test_members_rsvp_and_see_who_is_coming(admin: Member, ada: Member, gr
     event = await create_event(admin)
     rsvp = f"/api/events/{event['id']}/rsvp"
 
-    going = expect(await ada.client.put(rsvp, json={"status": "going", "guests": 2}), 200)
-    assert going["myRsvp"] == {"status": "going", "guests": 2}
+    two = {"status": "going", "guests": 2, "guestNames": ["Charles Babbage", "Mary Somerville"]}
+    going = expect(await ada.client.put(rsvp, json=two), 200)
+    assert going["myRsvp"] == two
     assert going["goingCount"] == 3  # Ada and her two guests
 
     maybe = expect(await grace.client.put(rsvp, json={"status": "maybe", "guests": 1}), 200)
     # Guests only count for those going.
-    assert maybe["myRsvp"] == {"status": "maybe", "guests": 0}
+    assert maybe["myRsvp"] == {"status": "maybe", "guests": 0, "guestNames": []}
     assert maybe["maybeCount"] == 1
 
     # Each member sees their own RSVP in the list, and everyone who is coming.
     [mine] = expect(await ada.client.get("/api/events"), 200)["events"]
-    assert mine["myRsvp"] == {"status": "going", "guests": 2}
+    assert mine["myRsvp"] == two
     assert mine["goingCount"] == 3
     [theirs] = expect(await admin.client.get("/api/events"), 200)["events"]
     assert theirs["myRsvp"] is None
 
     detail = expect(await admin.client.get(f"/api/events/{event['id']}"), 200)
-    assert [(a["name"], a["status"], a["guests"]) for a in detail["attendees"]] == [
-        ("Ada Lovelace", "going", 2),
-        ("Grace Hopper", "maybe", 0),
+    assert [
+        (a["name"], a["status"], a["guests"], a["guestNames"]) for a in detail["attendees"]
+    ] == [
+        ("Ada Lovelace", "going", 2, ["Charles Babbage", "Mary Somerville"]),
+        ("Grace Hopper", "maybe", 0, []),
     ]
 
     # Changing one's mind.
@@ -239,7 +242,7 @@ async def test_members_rsvp_and_see_who_is_coming(admin: Member, ada: Member, gr
 
 
 async def test_an_event_cannot_be_overfilled(admin: Member, ada: Member, grace: Member):
-    event = await create_event(admin, capacity=3)
+    event = await create_event(admin, capacity=3, guestNamesRequired=False)
     rsvp = f"/api/events/{event['id']}/rsvp"
 
     expect(await ada.client.put(rsvp, json={"status": "going", "guests": 1}), 200)
@@ -281,6 +284,61 @@ async def test_rsvps_are_checked(admin: Member, ada: Member):
     assert (await admin.client.delete(f"/api/events/{event['id']}")).status_code == 204
     row = await community.query("SELECT count(*) AS n FROM rsvps").one()
     assert row["n"] == 0
+
+
+async def test_events_have_their_own_guest_rules(admin: Member, ada: Member):
+    # By default: up to four guests, each with their full name.
+    event = await create_event(admin)
+    assert (event["maxGuests"], event["guestNamesRequired"]) == (4, True)
+    rsvp = f"/api/events/{event['id']}/rsvp"
+
+    def going(*names: str, guests: int | None = None) -> dict:
+        n = len(names) if guests is None else guests
+        return {"status": "going", "guests": n, "guestNames": list(names)}
+
+    for body in (
+        going(guests=1),  # unnamed
+        going("Charles"),  # a first name alone
+        going("Charles Babbage", "  ", guests=2),  # one of two
+    ):
+        unnamed = await ada.client.put(rsvp, json=body)
+        assert unnamed.status_code == 422, body
+        assert unnamed.json()["detail"] == "give each guest's full name, first and last"
+    named = expect(await ada.client.put(rsvp, json=going("  Charles   Babbage ")), 200)
+    assert named["myRsvp"]["guestNames"] == ["Charles Babbage"]
+    too_many = await ada.client.put(rsvp, json=going(*[f"Guest {i} Smith" for i in range(5)]))
+    assert too_many.status_code == 422
+    # More names than guests is no RSVP either.
+    assert (await ada.client.put(rsvp, json=going("A B", "C D", guests=1))).status_code == 422
+
+    # An admin sets them: more guests, unnamed.
+    changed = {"title": "House Dinner", "startsAt": at(days=7), "maxGuests": 6}
+    changed = expect(
+        await admin.client.put(
+            f"/api/events/{event['id']}", json={**changed, "guestNamesRequired": False}
+        ),
+        200,
+    )
+    assert (changed["maxGuests"], changed["guestNamesRequired"]) == (6, False)
+    six = expect(await ada.client.put(rsvp, json=going("Charles Babbage", guests=6)), 200)
+    assert six["myRsvp"]["guests"] == 6
+    assert six["myRsvp"]["guestNames"] == ["Charles Babbage"]
+    assert six["goingCount"] == 7
+
+    # Fewer than she brings: her RSVP stays as it was, but a new one keeps to it.
+    none = {"title": "House Dinner", "startsAt": at(days=7), "maxGuests": 0}
+    expect(await admin.client.put(f"/api/events/{event['id']}", json=none), 200)
+    kept = expect(await ada.client.get(f"/api/events/{event['id']}"), 200)
+    assert kept["myRsvp"]["guests"] == 6
+    refused = await ada.client.put(rsvp, json=going("Charles Babbage"))
+    assert refused.status_code == 422
+    assert refused.json()["detail"] == "this event takes no guests"
+    expect(await ada.client.put(rsvp, json=going()), 200)
+
+    # At most twenty, for any event.
+    assert (
+        await admin.client.post("/api/events", json={**none, "maxGuests": 21})
+    ).status_code == 422
 
 
 async def test_the_app_reports_no_errors(admin: Member, ada: Member):

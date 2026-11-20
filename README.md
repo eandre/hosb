@@ -177,7 +177,7 @@ pins with it: its CLI aligns them (`uv lock`).
 | `POST /api/events` | admin | create an event |
 | `PUT /api/events/{id}` | admin | change an event |
 | `DELETE /api/events/{id}` | admin | delete an event and its RSVPs |
-| `PUT /api/events/{id}/rsvp` | member | `{"status": "going" \| "maybe" \| "not_going", "guests": 0-4}` |
+| `PUT /api/events/{id}/rsvp` | member | `{"status": "going" \| "maybe" \| "not_going", "guests": n, "guestNames": [...]}` |
 | `DELETE /api/events/{id}/rsvp` | member | withdraw one's RSVP |
 | `POST /api/events/{id}/share-links` | member | the member's one shareable link to the event; an admin's new one, `{"name": "...", "signupCap": 10, "invitedBy": "Lisa"}` |
 | `GET /api/events/{id}/share-links` | admin | the event's links, with views and sign-ups |
@@ -202,7 +202,11 @@ pins with it: its CLI aligns them (`uv lock`).
 
 An event can have a number of places, which members going, their guests, and
 guests signed up through shareable links fill; an RSVP or sign-up that would
-overfill it is refused (409).
+overfill it is refused (409). Its admin also sets how many guests each
+member may bring (four unless they say otherwise, at most twenty), and
+whether members must give each guest's full name (unless they say otherwise,
+they must); an RSVP that breaks either is refused (422). Named guests are on
+the door list. Changing the rules leaves RSVPs already made as they are.
 
 Each event has a slug, its date in Stockholm and its title
 (`2026-11-26-the-house-dinner-thanksgiving`), and its page is
