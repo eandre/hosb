@@ -29,6 +29,7 @@ import {
 } from "@/lib/api"
 import { ago } from "@/lib/dates"
 import { useGoogleResult } from "@/lib/google-result"
+import { AddEmail } from "@/components/add-email"
 import { LegalLinks } from "@/components/site-footer"
 
 // The calendar option that makes a calendar of its own for the events.
@@ -80,6 +81,8 @@ function InvitationsSection() {
         <Skeleton className="h-16 w-full rounded-xl" />
       ) : !status.available && !status.enabled ? (
         <p className="text-sm text-muted-foreground">Invitations aren&apos;t set up here yet.</p>
+      ) : !status.email && !status.enabled ? (
+        <AddEmail onAdded={() => toggle(true)} />
       ) : (
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
