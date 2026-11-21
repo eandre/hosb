@@ -23,6 +23,7 @@ follow (google_calendar.py).
 from __future__ import annotations
 
 import logging
+import re
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
 
@@ -49,6 +50,13 @@ MAX_GUESTS = 20
 GUEST_NAME_LENGTH = 120
 
 RSVPStatus = Literal["going", "maybe", "not_going"]
+
+
+def is_house_hours(title: str) -> bool:
+    """Whether an event is one of the house's weekly open hours ("House
+    Hours"), which come round every week: the week view groups them, and
+    no one is sent invitations to them (google_invitations.py)."""
+    return re.match(r"house hours\b", title.strip(), re.IGNORECASE) is not None
 
 
 class Model(BaseModel):

@@ -7,7 +7,8 @@ which an admin connects on the admin page (the organizer). Each house event
 is one event in its calendar, with every member who asked for invitations
 as a guest, at the address they gave (their account's, unless they gave
 another): they need no Google account themselves, as Google emails the
-invitation to any address.
+invitation to any address. House Hours, which come round every week, are in
+the house's calendar too, but invite no one (events.is_house_hours).
 
 GET    /api/invitations                         the member's invitations, and whether
                                                 there are any to be had
@@ -58,7 +59,15 @@ from pydantic import BaseModel, Field, field_validator
 
 from calendar_changes import LOCAL_HANDLERS, CalendarChange, calendar_changes, run_soon
 from db import db
-from events import DEFAULT_DURATION_SQL, Admin, Member, Model, RSVPStatus, save_rsvp
+from events import (
+    DEFAULT_DURATION_SQL,
+    Admin,
+    Member,
+    Model,
+    RSVPStatus,
+    is_house_hours,
+    save_rsvp,
+)
 from share import EMAIL
 from google_calendar import (
     ON_CONNECTED,
@@ -367,9 +376,11 @@ async def send_invitations(google: Google, org: dict[str, Any], event_ids: list[
             await db.exec("DELETE FROM invitation_answers WHERE event_id = $1", row["event_id"])
 
     for event_id, event in wanted.items():
+        # House Hours invite no one: they'd be an email a week, each.
+        invited = [] if is_house_hours(event["title"]) else subscribers
         guests = [
             {"email": s["email"], "responseStatus": ANSWER_OF[rsvps.get((event_id, s["user_id"]))]}
-            for s in subscribers
+            for s in invited
         ]
         body = invitation_body(event, guests, org["app_origin"])
         content, answers = hashes(body)
@@ -378,7 +389,8 @@ async def send_invitations(google: Google, org: dict[str, Any], event_ids: list[
             continue
         # Guests are told of a new event, or of a change to it or to who's
         # invited; not of their own RSVP, made in the app, coming through.
-        notify_guests = row is None or row["content_hash"] != content
+        # Nor of House Hours: those invited before are taken off quietly.
+        notify_guests = bool(invited) and (row is None or row["content_hash"] != content)
         params = {"sendUpdates": "all" if notify_guests else "none"}
         google_id = None
         if row is not None:
@@ -386,7 +398,7 @@ async def send_invitations(google: Google, org: dict[str, Any], event_ids: list[
             updated = await google.call("PUT", path, body=body, params=params, missing_ok=True)
             google_id = None if updated is None else updated["id"]
         if google_id is None:
-            params["sendUpdates"] = "all"
+            params["sendUpdates"] = "all" if invited else "none"
             created = await google.call("POST", f"/calendars/{calendar}/events", body=body, params=params)
             assert created is not None
             google_id = created["id"]
@@ -408,7 +420,7 @@ async def send_invitations(google: Google, org: dict[str, Any], event_ids: list[
         # What Google now has as each guest's answer: one it has otherwise
         # later is theirs.
         await db.exec("DELETE FROM invitation_answers WHERE event_id = $1", event_id)
-        for s, guest in zip(subscribers, guests, strict=True):
+        for s, guest in zip(invited, guests, strict=True):
             await db.exec(
                 "INSERT INTO invitation_answers (event_id, user_id, answer) VALUES ($1, $2, $3)",
                 event_id,

@@ -108,6 +108,39 @@ async def test_answers_in_the_calendar_are_rsvps(
     assert google.answers(HOUSE, "Thanksgiving Dinner") == {ADA: "tentative"}
 
 
+async def test_house_hours_invite_no_one(
+    google: FakeGoogle, admin: Member, ada: Member, anonymous: httpx.AsyncClient
+):
+    await create_event(admin, "House Dinner")
+    await create_event(admin, "House Hours", days=2)
+    await connect_house(admin, anonymous, google)
+    expect(await ada.client.put("/api/invitations", json={"enabled": True}), 200)
+
+    # The house's calendar has them, without guests, so no one is emailed.
+    await eventually(lambda: google.answers(HOUSE, "House Dinner") == {ADA: "needsAction"})
+    await sync(admin)
+    invitation = google.invitation(HOUSE, "House Hours")
+    assert invitation.get("attendees", []) == []
+    assert {u for _, u in google.writes_to(invitation["id"])} == {"none"}
+
+    # One that was an invitation becomes House Hours: its guests are taken
+    # off, without an email.
+    supper = await create_event(admin, "Late Supper", days=3)
+    await eventually(lambda: google.answers(HOUSE, "Late Supper") == {ADA: "needsAction"})
+    supper_id = google.invitation(HOUSE, "Late Supper")["id"]
+    renamed = {"title": "House Hours", "startsAt": supper["startsAt"]}
+    expect(await admin.client.put(f"/api/events/{supper['id']}", json=renamed), 200)
+
+    def renamed_without_guests() -> bool:
+        [event] = [e for e in google.events(HOUSE) if e["id"] == supper_id]
+        return event["summary"] == "House Hours" and not event.get("attendees")
+
+    await eventually(renamed_without_guests)
+    assert google.writes_to(supper_id)[-1] == ("PUT", "none")
+    # And the House Dinner is still hers.
+    assert google.answers(HOUSE, "House Dinner") == {ADA: "needsAction"}
+
+
 async def test_a_yes_to_a_full_event_is_set_back(
     google: FakeGoogle, admin: Member, ada: Member, grace: Member, anonymous: httpx.AsyncClient
 ):

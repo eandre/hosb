@@ -52,3 +52,12 @@ def test_answers_and_rsvps_map_both_ways():
         assert RSVP_OF[ANSWER_OF[status]] == status
     assert ANSWER_OF[None] == "needsAction"
     assert "needsAction" not in RSVP_OF  # no answer withdraws nothing
+
+
+def test_house_hours_are_known_by_their_title():
+    from events import is_house_hours
+
+    for title in ("House Hours", "house hours", "  House Hours: late opening", "HOUSE HOURS"):
+        assert is_house_hours(title), title
+    for title in ("House Dinner", "Open House Hours", "House Hoursday", ""):
+        assert not is_house_hours(title), title
